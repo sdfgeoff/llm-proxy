@@ -10,5 +10,7 @@ rust-version.workspace = true
 axum.workspace = true
 llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-db = { path = "../llm-proxy-db" }
+serde.workspace = true
+time.workspace = true
 tokio.workspace = true
 tracing.workspace = true

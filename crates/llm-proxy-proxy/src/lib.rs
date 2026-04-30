@@ -2,11 +2,12 @@ use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::State,
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::get,
     Router,
 };
-use llm_proxy_core::Config;
+use llm_proxy_core::{auth::hash_lookup_token, Config};
 use llm_proxy_db::Database;
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -41,8 +42,21 @@ async fn health() -> impl IntoResponse {
     "ok"
 }
 
-async fn models(State(state): State<ProxyState>) -> impl IntoResponse {
-    let _ = state.database.pool();
+async fn models(State(state): State<ProxyState>, headers: HeaderMap) -> impl IntoResponse {
+    let Some(token) = bearer_token(&headers) else {
+        return unauthorized().into_response();
+    };
+
+    match state
+        .database
+        .proxy_api_key_by_hash(&hash_lookup_token(token))
+        .await
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => return unauthorized().into_response(),
+        Err(_) => return internal_error().into_response(),
+    }
+
     let models = state
         .config
         .models
@@ -61,4 +75,34 @@ async fn models(State(state): State<ProxyState>) -> impl IntoResponse {
         "object": "list",
         "data": models
     }))
+    .into_response()
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    value.strip_prefix("Bearer ")
+}
+
+fn unauthorized() -> impl IntoResponse {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "error": {
+                "message": "Missing or invalid proxy API key",
+                "type": "authentication_error"
+            }
+        })),
+    )
+}
+
+fn internal_error() -> impl IntoResponse {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": {
+                "message": "Internal proxy error",
+                "type": "proxy_error"
+            }
+        })),
+    )
 }

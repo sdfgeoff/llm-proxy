@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use llm_proxy_core::{config::default_config_json, Config};
+use llm_proxy_core::{auth::generate_session_token, config::default_config_json, Config};
 use llm_proxy_dashboard::DashboardState;
 use llm_proxy_db::Database;
 use llm_proxy_proxy::ProxyState;
@@ -88,9 +88,20 @@ async fn run(config_path: Option<PathBuf>) -> Result<()> {
         )
     })?;
 
+    let setup_token = if database.has_admin_account().await? {
+        None
+    } else {
+        let token = generate_session_token();
+        println!(
+            "Admin setup required: http://{}/setup\nSetup token: {}",
+            config.admin_listen, token
+        );
+        Some(token)
+    };
+
     let config = Arc::new(config);
     let proxy_state = ProxyState::new(Arc::clone(&config), database.clone());
-    let dashboard_state = DashboardState::new(Arc::clone(&config), database);
+    let dashboard_state = DashboardState::new(Arc::clone(&config), database, setup_token);
 
     let proxy_addr = config.proxy_listen;
     let admin_addr = config.admin_listen;
