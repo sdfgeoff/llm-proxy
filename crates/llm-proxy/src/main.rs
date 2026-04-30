@@ -2,7 +2,9 @@ use std::{fs, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use llm_proxy_core::{auth::generate_session_token, config::default_config_json, Config};
+use llm_proxy_core::{
+    auth::generate_session_token, config::default_config_json, Config, MasterKey,
+};
 use llm_proxy_dashboard::DashboardState;
 use llm_proxy_db::Database;
 use llm_proxy_proxy::ProxyState;
@@ -81,6 +83,8 @@ async fn run(config_path: Option<PathBuf>) -> Result<()> {
     );
 
     create_runtime_directories(&config)?;
+    let master_key = MasterKey::load_or_create(&config.master_key)
+        .with_context(|| format!("failed to load master key {}", config.master_key.display()))?;
     let database = Database::connect(&config.database).await.with_context(|| {
         format!(
             "failed to initialize database {}",
@@ -100,8 +104,9 @@ async fn run(config_path: Option<PathBuf>) -> Result<()> {
     };
 
     let config = Arc::new(config);
-    let proxy_state = ProxyState::new(Arc::clone(&config), database.clone());
-    let dashboard_state = DashboardState::new(Arc::clone(&config), database, setup_token);
+    let proxy_state = ProxyState::new(Arc::clone(&config), database.clone(), master_key.clone());
+    let dashboard_state =
+        DashboardState::new(Arc::clone(&config), database, master_key, setup_token);
 
     let proxy_addr = config.proxy_listen;
     let admin_addr = config.admin_listen;
@@ -118,6 +123,11 @@ fn create_runtime_directories(config: &Config) -> Result<()> {
     if let Some(parent) = config.database.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create database directory {}", parent.display()))?;
+    }
+    if let Some(parent) = config.master_key.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!("failed to create master key directory {}", parent.display())
+        })?;
     }
     fs::create_dir_all(&config.payload_dir).with_context(|| {
         format!(

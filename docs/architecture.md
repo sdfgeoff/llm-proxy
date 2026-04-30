@@ -51,6 +51,7 @@ Example config:
   "admin_listen": "0.0.0.0:8081",
   "database": "./data/llm-proxy.sqlite",
   "payload_dir": "./data/payloads",
+  "master_key": "./data/master.key",
   "default_route": "local",
   "routes": {
     "local": {
@@ -369,4 +370,3 @@ Monitoring failures after a request has started should not interrupt traffic whe
 - Advanced forensic indexing/search
 - Multi-admin accounts or admin roles
 - Hosted/CDN frontend assets
-

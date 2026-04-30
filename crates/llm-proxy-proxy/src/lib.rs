@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use llm_proxy_core::{auth::hash_lookup_token, routing::resolve_route, Config};
+use llm_proxy_core::{auth::hash_lookup_token, routing::resolve_route, Config, MasterKey};
 use llm_proxy_db::{Database, NewRequestLog, ProxyApiKey, RequestLogUpdate};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -20,14 +20,16 @@ use url::Url;
 pub struct ProxyState {
     config: Arc<Config>,
     database: Database,
+    master_key: MasterKey,
     client: Client,
 }
 
 impl ProxyState {
-    pub fn new(config: Arc<Config>, database: Database) -> Self {
+    pub fn new(config: Arc<Config>, database: Database, master_key: MasterKey) -> Self {
         Self {
             config,
             database,
+            master_key,
             client: Client::new(),
         }
     }
@@ -175,10 +177,16 @@ async fn chat_completions(
         return internal_error().into_response();
     };
 
-    if route.upstream_api_key.is_some() {
-        return not_implemented("Upstream secret forwarding is not implemented yet")
-            .into_response();
-    }
+    let upstream_api_key = match route.upstream_api_key.as_deref() {
+        Some(secret_name) => match load_upstream_secret(&state, secret_name).await {
+            Ok(secret) => Some(secret),
+            Err(SecretLoadError::Missing) => {
+                return upstream_secret_missing(secret_name).into_response();
+            }
+            Err(SecretLoadError::Internal) => return internal_error().into_response(),
+        },
+        None => None,
+    };
 
     if let Some(model) = payload.get_mut("model") {
         *model = Value::String(resolved.upstream_model.clone());
@@ -204,7 +212,11 @@ async fn chat_completions(
     };
 
     debug!(%upstream_url, "forwarding chat completions request");
-    let upstream_result = state.client.post(upstream_url).json(&payload).send().await;
+    let mut request = state.client.post(upstream_url).json(&payload);
+    if let Some(api_key) = upstream_api_key {
+        request = request.bearer_auth(api_key);
+    }
+    let upstream_result = request.send().await;
     let upstream_response = match upstream_result {
         Ok(response) => response,
         Err(_) => {
@@ -308,6 +320,27 @@ async fn fetch_upstream_models(state: &ProxyState, url: Url) -> Result<Vec<Value
         .unwrap_or_default())
 }
 
+enum SecretLoadError {
+    Missing,
+    Internal,
+}
+
+async fn load_upstream_secret(state: &ProxyState, name: &str) -> Result<String, SecretLoadError> {
+    let Some(secret) = state
+        .database
+        .upstream_secret(name)
+        .await
+        .map_err(|_| SecretLoadError::Internal)?
+    else {
+        return Err(SecretLoadError::Missing);
+    };
+
+    state
+        .master_key
+        .decrypt(&secret.encrypted_value, &secret.nonce)
+        .map_err(|_| SecretLoadError::Internal)
+}
+
 fn route_url(base_url: &Url, path: &str) -> Result<Url, ()> {
     base_url.join(path.trim_start_matches('/')).map_err(|_| ())
 }
@@ -397,6 +430,18 @@ fn upstream_unavailable() -> impl IntoResponse {
     )
 }
 
+fn upstream_secret_missing(secret_name: &str) -> impl IntoResponse {
+    (
+        StatusCode::BAD_GATEWAY,
+        Json(json!({
+            "error": {
+                "message": format!("Upstream secret '{secret_name}' is not configured"),
+                "type": "upstream_secret_missing"
+            }
+        })),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeMap, sync::Arc};
@@ -404,6 +449,7 @@ mod tests {
     use axum::{
         body::{to_bytes, Body},
         http::{Request, StatusCode},
+        routing::post,
     };
     use llm_proxy_core::{
         auth::{generate_proxy_api_key, hash_lookup_token},
@@ -424,7 +470,12 @@ mod tests {
             .create_proxy_api_key("test", &hash_lookup_token(&token))
             .await
             .expect("create key");
-        (ProxyState::new(Arc::new(config), database), token, dir)
+        let master_key = MasterKey::load_or_create(&dir.path().join("master.key")).expect("key");
+        (
+            ProxyState::new(Arc::new(config), database, master_key),
+            token,
+            dir,
+        )
     }
 
     #[tokio::test]
@@ -489,5 +540,73 @@ mod tests {
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(json["data"][0]["id"], "fast-local");
+    }
+
+    #[tokio::test]
+    async fn chat_completions_forwards_configured_upstream_secret() {
+        let upstream = axum::Router::new().route(
+            "/v1/chat/completions",
+            post(|headers: HeaderMap| async move {
+                assert_eq!(
+                    headers.get(header::AUTHORIZATION),
+                    Some(&http::HeaderValue::from_static("Bearer upstream-secret"))
+                );
+                Json(json!({
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "usage": { "prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3 }
+                }))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind upstream");
+        let upstream_addr = listener.local_addr().expect("upstream addr");
+        tokio::spawn(async move {
+            axum::serve(listener, upstream)
+                .await
+                .expect("serve upstream");
+        });
+
+        let mut routes = BTreeMap::new();
+        routes.insert(
+            "openai".to_owned(),
+            RouteConfig {
+                base_url: Url::parse(&format!("http://{upstream_addr}")).expect("url"),
+                upstream_api_key: Some("openai-prod".to_owned()),
+            },
+        );
+        let config = Config {
+            default_route: "openai".to_owned(),
+            routes,
+            ..Config::default()
+        };
+        let (state, token, _dir) = state_with_key(config).await;
+        let encrypted = state
+            .master_key
+            .encrypt("upstream-secret")
+            .expect("encrypt");
+        state
+            .database
+            .upsert_upstream_secret("openai-prod", &encrypted.ciphertext, &encrypted.nonce)
+            .await
+            .expect("store secret");
+
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"}]}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }

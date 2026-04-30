@@ -2,5 +2,6 @@
 /target
 /data
 /config.json
+master.key
 *.sqlite
 *.sqlite-*

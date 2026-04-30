@@ -12,7 +12,7 @@ use llm_proxy_core::{
         generate_proxy_api_key, generate_session_token, hash_admin_password, hash_lookup_token,
         verify_admin_password,
     },
-    Config,
+    Config, MasterKey,
 };
 use llm_proxy_db::Database;
 use serde::Deserialize;
@@ -26,14 +26,21 @@ const SESSION_COOKIE: &str = "llm_proxy_session";
 pub struct DashboardState {
     config: Arc<Config>,
     database: Database,
+    master_key: MasterKey,
     setup_token: Option<String>,
 }
 
 impl DashboardState {
-    pub fn new(config: Arc<Config>, database: Database, setup_token: Option<String>) -> Self {
+    pub fn new(
+        config: Arc<Config>,
+        database: Database,
+        master_key: MasterKey,
+        setup_token: Option<String>,
+    ) -> Self {
         Self {
             config,
             database,
+            master_key,
             setup_token,
         }
     }
@@ -47,6 +54,11 @@ pub fn router(state: DashboardState) -> Router {
         .route("/login", get(login_page).post(login))
         .route("/logout", post(logout))
         .route("/keys", get(keys_page).post(create_key))
+        .route(
+            "/upstream-secrets",
+            get(upstream_secrets_page).post(upsert_upstream_secret),
+        )
+        .route("/upstream-secrets/delete", post(delete_upstream_secret))
         .with_state(state)
 }
 
@@ -70,6 +82,17 @@ struct LoginForm {
 #[derive(Debug, Deserialize)]
 struct CreateKeyForm {
     label: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpstreamSecretForm {
+    name: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteUpstreamSecretForm {
+    name: String,
 }
 
 async fn index(State(state): State<DashboardState>, headers: HeaderMap) -> Response {
@@ -265,6 +288,7 @@ fn dashboard_page(state: &DashboardState) -> Html<String> {
     </dl>
     <nav>
       <a href="/keys">Proxy API keys</a>
+      <a href="/upstream-secrets">Upstream secrets</a>
       <form method="post" action="/logout"><button type="submit">Log out</button></form>
     </nav>
   </main>
@@ -276,6 +300,78 @@ fn dashboard_page(state: &DashboardState) -> Html<String> {
 
 async fn health() -> impl IntoResponse {
     "ok"
+}
+
+async fn upstream_secrets_page(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    match require_admin(&state, &headers).await {
+        Ok(AuthState::Authenticated) => render_upstream_secrets_page(&state, None).await,
+        Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => Redirect::to("/login").into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn upsert_upstream_secret(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+    Form(form): Form<UpstreamSecretForm>,
+) -> Response {
+    match require_admin(&state, &headers).await {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    let name = form.name.trim();
+    if name.is_empty() || form.value.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Html(page(
+                "Upstream Secrets",
+                "<p>Secret name and value are required.</p>",
+            )),
+        )
+            .into_response();
+    }
+
+    let encrypted = match state.master_key.encrypt(&form.value) {
+        Ok(encrypted) => encrypted,
+        Err(_) => return internal_error(),
+    };
+    match state
+        .database
+        .upsert_upstream_secret(name, &encrypted.ciphertext, &encrypted.nonce)
+        .await
+    {
+        Ok(()) => render_upstream_secrets_page(&state, Some("Secret saved.")).await,
+        Err(_) => internal_error(),
+    }
+}
+
+async fn delete_upstream_secret(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+    Form(form): Form<DeleteUpstreamSecretForm>,
+) -> Response {
+    match require_admin(&state, &headers).await {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    match state
+        .database
+        .delete_upstream_secret(form.name.trim())
+        .await
+    {
+        Ok(()) => render_upstream_secrets_page(&state, Some("Secret deleted.")).await,
+        Err(_) => internal_error(),
+    }
 }
 
 async fn render_keys_page(state: &DashboardState, new_key: Option<String>) -> Response {
@@ -314,6 +410,51 @@ async fn render_keys_page(state: &DashboardState, new_key: Option<String>) -> Re
     body.push_str("</tbody></table><p><a href=\"/\">Dashboard</a></p>");
 
     Html(page("API Keys", &body)).into_response()
+}
+
+async fn render_upstream_secrets_page(state: &DashboardState, message: Option<&str>) -> Response {
+    let Ok(secrets) = state.database.list_upstream_secrets().await else {
+        return internal_error();
+    };
+
+    let mut body = String::new();
+    body.push_str("<h1>Upstream secrets</h1>");
+    if let Some(message) = message {
+        let _ = write!(body, "<p>{}</p>", escape_html(message));
+    }
+    body.push_str(
+        r#"
+<form method="post" action="/upstream-secrets">
+  <label>Name <input name="name" required></label>
+  <label>API key <input name="value" type="password" required></label>
+  <button type="submit">Save secret</button>
+</form>
+<table>
+  <thead><tr><th>Name</th><th>Updated</th><th></th></tr></thead>
+  <tbody>
+"#,
+    );
+    for secret in secrets {
+        let _ = write!(
+            body,
+            r#"<tr>
+<td>{}</td>
+<td>{}</td>
+<td>
+  <form method="post" action="/upstream-secrets/delete">
+    <input type="hidden" name="name" value="{}">
+    <button type="submit">Delete</button>
+  </form>
+</td>
+</tr>"#,
+            escape_html(&secret.name),
+            escape_html(&secret.updated_at),
+            escape_html(&secret.name)
+        );
+    }
+    body.push_str("</tbody></table><p><a href=\"/\">Dashboard</a></p>");
+
+    Html(page("Upstream Secrets", &body)).into_response()
 }
 
 enum AuthState {

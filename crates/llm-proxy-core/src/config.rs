@@ -17,6 +17,7 @@ pub struct Config {
     pub admin_listen: SocketAddr,
     pub database: PathBuf,
     pub payload_dir: PathBuf,
+    pub master_key: PathBuf,
     pub default_route: String,
     pub routes: BTreeMap<String, RouteConfig>,
     #[serde(default)]
@@ -110,6 +111,7 @@ impl Default for Config {
                 .expect("default admin address is valid"),
             database: PathBuf::from("./data/llm-proxy.sqlite"),
             payload_dir: PathBuf::from("./data/payloads"),
+            master_key: PathBuf::from("./data/master.key"),
             default_route: "local".to_owned(),
             routes,
             models: BTreeMap::new(),
