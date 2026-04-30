@@ -1,0 +1,6 @@
+.codex
+/target
+/data
+/config.json
+*.sqlite
+*.sqlite-*

@@ -1,0 +1,36 @@
+[workspace]
+members = [
+    "crates/llm-proxy",
+    "crates/llm-proxy-core",
+    "crates/llm-proxy-dashboard",
+    "crates/llm-proxy-db",
+    "crates/llm-proxy-proxy",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://example.invalid/llm-proxy"
+rust-version = "1.82"
+
+[workspace.dependencies]
+anyhow = "1"
+argon2 = "0.5"
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+http = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "time", "uuid"] }
+tempfile = "3"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "macros", "serde"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+url = { version = "2", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v7"] }
