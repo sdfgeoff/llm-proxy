@@ -13,6 +13,15 @@ pub enum RoutingMatch {
     Default,
 }
 
+impl RoutingMatch {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::Default => "default",
+        }
+    }
+}
+
 pub fn resolve_route(config: &Config, requested_model: &str) -> ResolvedRoute {
     if let Some(model_route) = config.models.get(requested_model) {
         return ResolvedRoute {
