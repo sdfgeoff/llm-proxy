@@ -18,6 +18,14 @@ pub struct RequestLogUpdate {
     pub http_status: Option<u16>,
     pub error_category: Option<String>,
     pub duration_ms: Option<u64>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    pub cached_input_tokens: Option<u64>,
+    pub reasoning_tokens: Option<u64>,
+    pub accepted_prediction_tokens: Option<u64>,
+    pub rejected_prediction_tokens: Option<u64>,
+    pub token_source: Option<String>,
     pub provider_usage_json: Option<String>,
 }
 
@@ -122,6 +130,14 @@ impl Database {
             SET http_status = ?,
                 error_category = ?,
                 duration_ms = ?,
+                input_tokens = ?,
+                output_tokens = ?,
+                total_tokens = ?,
+                cached_input_tokens = ?,
+                reasoning_tokens = ?,
+                accepted_prediction_tokens = ?,
+                rejected_prediction_tokens = ?,
+                token_source = ?,
                 provider_usage_json = ?
             WHERE id = ?
             "#,
@@ -129,6 +145,14 @@ impl Database {
         .bind(update.http_status.map(i64::from))
         .bind(update.error_category)
         .bind(update.duration_ms.map(|value| value as i64))
+        .bind(update.input_tokens.map(|value| value as i64))
+        .bind(update.output_tokens.map(|value| value as i64))
+        .bind(update.total_tokens.map(|value| value as i64))
+        .bind(update.cached_input_tokens.map(|value| value as i64))
+        .bind(update.reasoning_tokens.map(|value| value as i64))
+        .bind(update.accepted_prediction_tokens.map(|value| value as i64))
+        .bind(update.rejected_prediction_tokens.map(|value| value as i64))
+        .bind(update.token_source)
         .bind(update.provider_usage_json)
         .bind(id)
         .execute(&self.pool)
@@ -377,6 +401,15 @@ mod tests {
             RequestLogUpdate {
                 http_status: Some(200),
                 duration_ms: Some(123),
+                input_tokens: Some(10),
+                output_tokens: Some(5),
+                total_tokens: Some(15),
+                cached_input_tokens: Some(4),
+                reasoning_tokens: Some(2),
+                accepted_prediction_tokens: Some(3),
+                rejected_prediction_tokens: Some(1),
+                token_source: Some("provider".to_owned()),
+                provider_usage_json: Some(r#"{"total_tokens":15}"#.to_owned()),
                 ..RequestLogUpdate::default()
             },
         )
@@ -398,8 +431,21 @@ mod tests {
         .await
         .expect("update payload");
 
-        let row: (i64, i64, String, String) = sqlx::query_as(
-            "SELECT http_status, duration_ms, payload_capture_status, request_payload_path FROM request_log WHERE id = ?",
+        let row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            String,
+            String,
+            String,
+        ) = sqlx::query_as(
+            "SELECT http_status, duration_ms, input_tokens, output_tokens, total_tokens, cached_input_tokens, reasoning_tokens, accepted_prediction_tokens, rejected_prediction_tokens, token_source, payload_capture_status, request_payload_path FROM request_log WHERE id = ?",
         )
         .bind(&id)
         .fetch_one(db.pool())
@@ -407,7 +453,20 @@ mod tests {
         .expect("fetch log");
         assert_eq!(
             row,
-            (200, 123, "complete".to_owned(), "req.zst.enc".to_owned())
+            (
+                200,
+                123,
+                10,
+                5,
+                15,
+                4,
+                2,
+                3,
+                1,
+                "provider".to_owned(),
+                "complete".to_owned(),
+                "req.zst.enc".to_owned()
+            )
         );
 
         let recent = db.recent_requests(10).await.expect("recent requests");
@@ -422,5 +481,7 @@ mod tests {
             .expect("detail exists");
         assert_eq!(detail.payload_capture_status, "complete");
         assert_eq!(detail.request_payload_path, Some("req.zst.enc".to_owned()));
+        assert_eq!(detail.total_tokens, Some(15));
+        assert_eq!(detail.token_source, Some("provider".to_owned()));
     }
 }

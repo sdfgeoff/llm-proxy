@@ -7,6 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use llm_proxy_core::routing::resolve_route;
+use llm_proxy_core::tokens::{estimate_token_usage, token_usage_from_provider, TokenUsage};
 use llm_proxy_db::{NewRequestLog, PayloadCaptureUpdate, RequestLogUpdate};
 use serde_json::Value;
 use tracing::debug;
@@ -126,6 +127,7 @@ pub(crate) async fn chat_completions(
                 Some("upstream_request".to_owned()),
                 start,
                 None,
+                None,
             )
             .await;
             return upstream_unavailable().into_response();
@@ -151,6 +153,7 @@ pub(crate) async fn chat_completions(
                 Some("upstream_body".to_owned()),
                 start,
                 None,
+                None,
             )
             .await;
             return upstream_unavailable().into_response();
@@ -172,10 +175,7 @@ pub(crate) async fn chat_completions(
         .await;
     }
 
-    let provider_usage_json = serde_json::from_slice::<Value>(&response_body)
-        .ok()
-        .and_then(|value| value.get("usage").cloned())
-        .map(|usage| usage.to_string());
+    let (token_usage, provider_usage_json) = token_usage_for_response(&payload, &response_body);
 
     update_request_log_best_effort(
         &state,
@@ -183,6 +183,7 @@ pub(crate) async fn chat_completions(
         Some(status.as_u16()),
         None,
         start,
+        token_usage,
         provider_usage_json,
     )
     .await;
@@ -201,6 +202,7 @@ async fn update_request_log_best_effort(
     http_status: Option<u16>,
     error_category: Option<String>,
     start: Instant,
+    token_usage: Option<TokenUsage>,
     provider_usage_json: Option<String>,
 ) {
     let Some(id) = request_log_id else {
@@ -214,10 +216,45 @@ async fn update_request_log_best_effort(
                 http_status,
                 error_category,
                 duration_ms: Some(start.elapsed().as_millis() as u64),
+                input_tokens: token_usage.as_ref().and_then(|usage| usage.input_tokens),
+                output_tokens: token_usage.as_ref().and_then(|usage| usage.output_tokens),
+                total_tokens: token_usage.as_ref().and_then(|usage| usage.total_tokens),
+                cached_input_tokens: token_usage
+                    .as_ref()
+                    .and_then(|usage| usage.cached_input_tokens),
+                reasoning_tokens: token_usage
+                    .as_ref()
+                    .and_then(|usage| usage.reasoning_tokens),
+                accepted_prediction_tokens: token_usage
+                    .as_ref()
+                    .and_then(|usage| usage.accepted_prediction_tokens),
+                rejected_prediction_tokens: token_usage
+                    .as_ref()
+                    .and_then(|usage| usage.rejected_prediction_tokens),
+                token_source: token_usage.map(|usage| usage.token_source),
                 provider_usage_json,
             },
         )
         .await;
+}
+
+fn token_usage_for_response(
+    request: &Value,
+    response_body: &[u8],
+) -> (Option<TokenUsage>, Option<String>) {
+    let response_json = serde_json::from_slice::<Value>(response_body).ok();
+    let provider_usage = response_json.as_ref().and_then(|value| value.get("usage"));
+    let provider_usage_json = provider_usage.map(Value::to_string);
+    let token_usage = provider_usage
+        .and_then(token_usage_from_provider)
+        .or_else(|| {
+            let response_value = response_json.unwrap_or_else(|| {
+                Value::String(String::from_utf8_lossy(response_body).into_owned())
+            });
+            Some(estimate_token_usage(request, &response_value))
+        });
+
+    (token_usage, provider_usage_json)
 }
 
 async fn capture_payload(
