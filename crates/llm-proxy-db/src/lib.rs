@@ -52,6 +52,18 @@ pub struct RequestLogUpdate {
     pub provider_usage_json: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct PayloadCaptureUpdate {
+    pub status: String,
+    pub error: Option<String>,
+    pub request_path: Option<String>,
+    pub response_path: Option<String>,
+    pub request_bytes: Option<u64>,
+    pub response_bytes: Option<u64>,
+    pub request_hash: Option<String>,
+    pub response_hash: Option<String>,
+}
+
 impl Database {
     pub async fn connect(path: &Path) -> Result<Self, DbError> {
         let options = SqliteConnectOptions::new()
@@ -319,6 +331,39 @@ impl Database {
         .bind(update.error_category)
         .bind(update.duration_ms.map(|value| value as i64))
         .bind(update.provider_usage_json)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_payload_capture(
+        &self,
+        id: &str,
+        update: PayloadCaptureUpdate,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            r#"
+            UPDATE request_log
+            SET payload_capture_status = ?,
+                payload_capture_error = ?,
+                request_payload_path = ?,
+                response_payload_path = ?,
+                request_payload_bytes = ?,
+                response_payload_bytes = ?,
+                request_payload_hash = ?,
+                response_payload_hash = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(update.status)
+        .bind(update.error)
+        .bind(update.request_path)
+        .bind(update.response_path)
+        .bind(update.request_bytes.map(|value| value as i64))
+        .bind(update.response_bytes.map(|value| value as i64))
+        .bind(update.request_hash)
+        .bind(update.response_hash)
         .bind(id)
         .execute(&self.pool)
         .await?;
@@ -597,13 +642,31 @@ mod tests {
         )
         .await
         .expect("update log");
+        db.update_payload_capture(
+            &id,
+            PayloadCaptureUpdate {
+                status: "complete".to_owned(),
+                request_path: Some("req.zst.enc".to_owned()),
+                response_path: Some("res.zst.enc".to_owned()),
+                request_bytes: Some(10),
+                response_bytes: Some(20),
+                request_hash: Some("req-hash".to_owned()),
+                response_hash: Some("res-hash".to_owned()),
+                ..PayloadCaptureUpdate::default()
+            },
+        )
+        .await
+        .expect("update payload");
 
-        let row: (i64, i64) =
-            sqlx::query_as("SELECT http_status, duration_ms FROM request_log WHERE id = ?")
+        let row: (i64, i64, String, String) =
+            sqlx::query_as("SELECT http_status, duration_ms, payload_capture_status, request_payload_path FROM request_log WHERE id = ?")
                 .bind(id)
                 .fetch_one(db.pool())
                 .await
                 .expect("fetch log");
-        assert_eq!(row, (200, 123));
+        assert_eq!(
+            row,
+            (200, 123, "complete".to_owned(), "req.zst.enc".to_owned())
+        );
     }
 }

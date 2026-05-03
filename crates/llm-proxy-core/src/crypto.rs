@@ -77,10 +77,14 @@ impl MasterKey {
     }
 
     pub fn encrypt(&self, plaintext: &str) -> Result<EncryptedValue, CryptoError> {
+        self.encrypt_bytes(plaintext.as_bytes())
+    }
+
+    pub fn encrypt_bytes(&self, plaintext: &[u8]) -> Result<EncryptedValue, CryptoError> {
         let cipher = XChaCha20Poly1305::new(&self.bytes.into());
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
         let ciphertext = cipher
-            .encrypt(&nonce, plaintext.as_bytes())
+            .encrypt(&nonce, plaintext)
             .map_err(|_| CryptoError::Encrypt)?;
         Ok(EncryptedValue {
             ciphertext,
@@ -89,12 +93,16 @@ impl MasterKey {
     }
 
     pub fn decrypt(&self, ciphertext: &[u8], nonce: &[u8]) -> Result<String, CryptoError> {
+        let plaintext = self.decrypt_bytes(ciphertext, nonce)?;
+        String::from_utf8(plaintext).map_err(|_| CryptoError::Decrypt)
+    }
+
+    pub fn decrypt_bytes(&self, ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CryptoError> {
         let cipher = XChaCha20Poly1305::new(&self.bytes.into());
         let nonce = XNonce::from_slice(nonce);
-        let plaintext = cipher
+        cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|_| CryptoError::Decrypt)?;
-        String::from_utf8(plaintext).map_err(|_| CryptoError::Decrypt)
+            .map_err(|_| CryptoError::Decrypt)
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, CryptoError> {

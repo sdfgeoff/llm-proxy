@@ -8,15 +8,20 @@ rust-version.workspace = true
 
 [dependencies]
 axum.workspace = true
+base64.workspace = true
 bytes.workspace = true
 http.workspace = true
 llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-db = { path = "../llm-proxy-db" }
 reqwest.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
+zstd.workspace = true
 
 [dev-dependencies]
 llm-proxy-core = { path = "../llm-proxy-core" }

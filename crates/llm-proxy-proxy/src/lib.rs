@@ -1,3 +1,5 @@
+mod payload;
+
 use std::{net::SocketAddr, sync::Arc, time::Instant};
 
 use axum::{
@@ -9,7 +11,8 @@ use axum::{
     Router,
 };
 use llm_proxy_core::{auth::hash_lookup_token, routing::resolve_route, Config, MasterKey};
-use llm_proxy_db::{Database, NewRequestLog, ProxyApiKey, RequestLogUpdate};
+use llm_proxy_db::{Database, NewRequestLog, PayloadCaptureUpdate, ProxyApiKey, RequestLogUpdate};
+use payload::{archive_payload, ArchivedPayload, PayloadKind};
 use reqwest::Client;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
@@ -206,6 +209,16 @@ async fn chat_completions(
         .await
         .ok();
 
+    let mut request_archive = None;
+    let mut response_archive = None;
+    let mut payload_capture_error = None;
+    if let Some(id) = request_log_id.as_deref() {
+        match capture_payload(&state, id, PayloadKind::Request, &body).await {
+            Ok(archive) => request_archive = Some(archive),
+            Err(error) => payload_capture_error = Some(error),
+        }
+    }
+
     let upstream_url = match route_url(&route.base_url, "/v1/chat/completions") {
         Ok(url) => url,
         Err(()) => return internal_error().into_response(),
@@ -220,6 +233,16 @@ async fn chat_completions(
     let upstream_response = match upstream_result {
         Ok(response) => response,
         Err(_) => {
+            if let Some(id) = request_log_id.as_deref() {
+                update_payload_capture_best_effort(
+                    &state,
+                    id,
+                    request_archive,
+                    None,
+                    payload_capture_error,
+                )
+                .await;
+            }
             update_request_log_best_effort(
                 &state,
                 request_log_id.as_deref(),
@@ -239,9 +262,19 @@ async fn chat_completions(
         .get(header::CONTENT_TYPE)
         .cloned()
         .unwrap_or_else(|| HeaderValue::from_static("application/json"));
-    let body = match upstream_response.bytes().await {
+    let response_body = match upstream_response.bytes().await {
         Ok(body) => body,
         Err(_) => {
+            if let Some(id) = request_log_id.as_deref() {
+                update_payload_capture_best_effort(
+                    &state,
+                    id,
+                    request_archive,
+                    None,
+                    payload_capture_error,
+                )
+                .await;
+            }
             update_request_log_best_effort(
                 &state,
                 request_log_id.as_deref(),
@@ -255,7 +288,22 @@ async fn chat_completions(
         }
     };
 
-    let provider_usage_json = serde_json::from_slice::<Value>(&body)
+    if let Some(id) = request_log_id.as_deref() {
+        match capture_payload(&state, id, PayloadKind::Response, &response_body).await {
+            Ok(archive) => response_archive = Some(archive),
+            Err(error) => payload_capture_error = Some(error),
+        }
+        update_payload_capture_best_effort(
+            &state,
+            id,
+            request_archive,
+            response_archive,
+            payload_capture_error,
+        )
+        .await;
+    }
+
+    let provider_usage_json = serde_json::from_slice::<Value>(&response_body)
         .ok()
         .and_then(|value| value.get("usage").cloned())
         .map(|usage| usage.to_string());
@@ -270,7 +318,7 @@ async fn chat_completions(
     )
     .await;
 
-    let mut response = Response::new(axum::body::Body::from(body));
+    let mut response = Response::new(axum::body::Body::from(response_body));
     *response.status_mut() = status;
     response
         .headers_mut()
@@ -370,6 +418,62 @@ async fn update_request_log_best_effort(
         .await;
 }
 
+async fn capture_payload(
+    state: &ProxyState,
+    request_id: &str,
+    kind: PayloadKind,
+    payload: &[u8],
+) -> Result<ArchivedPayload, String> {
+    if !state.config.payload_capture.default_enabled {
+        return Err("payload capture disabled".to_owned());
+    }
+
+    archive_payload(
+        &state.config.payload_dir,
+        &state.master_key,
+        request_id,
+        kind,
+        payload,
+    )
+    .map_err(|error| error.to_string())
+}
+
+async fn update_payload_capture_best_effort(
+    state: &ProxyState,
+    request_id: &str,
+    request: Option<ArchivedPayload>,
+    response: Option<ArchivedPayload>,
+    error: Option<String>,
+) {
+    let status = if error.is_some() {
+        "failed"
+    } else if request.is_some() || response.is_some() {
+        "complete"
+    } else {
+        "disabled"
+    };
+    let _ = state
+        .database
+        .update_payload_capture(
+            request_id,
+            PayloadCaptureUpdate {
+                status: status.to_owned(),
+                error,
+                request_path: request
+                    .as_ref()
+                    .map(|archive| archive.relative_path.clone()),
+                response_path: response
+                    .as_ref()
+                    .map(|archive| archive.relative_path.clone()),
+                request_bytes: request.as_ref().map(|archive| archive.raw_bytes),
+                response_bytes: response.as_ref().map(|archive| archive.raw_bytes),
+                request_hash: request.map(|archive| archive.raw_sha256),
+                response_hash: response.map(|archive| archive.raw_sha256),
+            },
+        )
+        .await;
+}
+
 fn unauthorized() -> impl IntoResponse {
     (
         StatusCode::UNAUTHORIZED,
@@ -460,8 +564,9 @@ mod tests {
 
     use super::*;
 
-    async fn state_with_key(config: Config) -> (ProxyState, String, tempfile::TempDir) {
+    async fn state_with_key(mut config: Config) -> (ProxyState, String, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");
+        config.payload_dir = dir.path().join("payloads");
         let database = Database::connect(&dir.path().join("test.sqlite"))
             .await
             .expect("database");
