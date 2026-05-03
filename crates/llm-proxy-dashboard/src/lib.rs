@@ -1,5 +1,6 @@
 mod auth;
 mod pages;
+mod payloads;
 mod render;
 mod routes;
 mod state;
@@ -22,6 +23,9 @@ pub fn router(state: DashboardState) -> Router {
         .route("/login", get(routes::login_page).post(routes::login))
         .route("/logout", post(routes::logout))
         .route("/keys", get(routes::keys_page).post(routes::create_key))
+        .route("/requests", get(routes::requests_page))
+        .route("/requests/:id", get(routes::request_detail_page))
+        .route("/requests/:id/payload/:kind", get(routes::download_payload))
         .route(
             "/upstream-secrets",
             get(routes::upstream_secrets_page).post(routes::upsert_upstream_secret),

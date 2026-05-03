@@ -6,7 +6,9 @@ mod secrets;
 use std::path::Path;
 
 pub use admin::ProxyApiKey;
-pub use requests::{NewRequestLog, PayloadCaptureUpdate, RequestLogUpdate};
+pub use requests::{
+    NewRequestLog, PayloadCaptureUpdate, RequestDetail, RequestLogUpdate, RequestSummary,
+};
 pub use secrets::UpstreamSecret;
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, SqlitePool};
 use thiserror::Error;

@@ -11,6 +11,8 @@ axum.workspace = true
 llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-db = { path = "../llm-proxy-db" }
 serde.workspace = true
+thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+zstd.workspace = true

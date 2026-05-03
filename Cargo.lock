@@ -1115,9 +1115,11 @@ dependencies = [
  "llm-proxy-core",
  "llm-proxy-db",
  "serde",
+ "thiserror",
  "time",
  "tokio",
  "tracing",
+ "zstd",
 ]
 
 [[package]]
