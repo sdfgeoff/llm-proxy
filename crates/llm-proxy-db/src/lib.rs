@@ -1,5 +1,8 @@
 mod admin;
 mod migrations;
+mod request_rows;
+#[cfg(test)]
+mod request_tests;
 mod requests;
 mod secrets;
 

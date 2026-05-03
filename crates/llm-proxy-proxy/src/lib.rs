@@ -1,10 +1,14 @@
 mod auth;
 mod chat;
 mod handlers;
+mod logging;
 mod models;
 mod payload;
 mod responses;
+mod responses_endpoint;
+mod streaming;
 mod upstream;
+mod usage;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -41,6 +45,10 @@ pub fn router(state: ProxyState) -> Router {
         .route(
             "/v1/chat/completions",
             axum::routing::post(chat::chat_completions),
+        )
+        .route(
+            "/v1/responses",
+            axum::routing::post(responses_endpoint::responses),
         )
         .with_state(state)
 }

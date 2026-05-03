@@ -40,18 +40,6 @@ pub(crate) fn bad_request(message: &'static str) -> impl IntoResponse {
     )
 }
 
-pub(crate) fn not_implemented(message: &'static str) -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": {
-                "message": message,
-                "type": "proxy_not_implemented"
-            }
-        })),
-    )
-}
-
 pub(crate) fn upstream_unavailable() -> impl IntoResponse {
     (
         StatusCode::BAD_GATEWAY,

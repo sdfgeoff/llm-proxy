@@ -1143,6 +1143,7 @@ dependencies = [
  "axum",
  "base64",
  "bytes",
+ "futures-util",
  "http",
  "llm-proxy-core",
  "llm-proxy-db",

@@ -23,6 +23,7 @@ bytes = "1"
 chacha20poly1305 = "0.10"
 clap = { version = "4", features = ["derive"] }
 http = "1"
+futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1", features = ["derive"] }

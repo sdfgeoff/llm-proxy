@@ -7,19 +7,23 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use llm_proxy_core::routing::resolve_route;
-use llm_proxy_core::tokens::{estimate_token_usage, token_usage_from_provider, TokenUsage};
-use llm_proxy_db::{NewRequestLog, PayloadCaptureUpdate, RequestLogUpdate};
+use llm_proxy_db::NewRequestLog;
 use serde_json::Value;
 use tracing::debug;
 
 use crate::{
     auth::{authenticate_proxy_key, AuthFailure},
-    payload::{archive_payload, ArchivedPayload, PayloadKind},
-    responses::{
-        bad_request, internal_error, not_implemented, unauthorized, upstream_secret_missing,
-        upstream_unavailable,
+    logging::{
+        capture_payload, update_payload_after_failure, update_payload_capture_best_effort,
+        update_request_log_best_effort,
     },
+    payload::PayloadKind,
+    responses::{
+        bad_request, internal_error, unauthorized, upstream_secret_missing, upstream_unavailable,
+    },
+    streaming::{streaming_response, StreamingResponseInput},
     upstream::{content_type_or_json, load_upstream_secret, route_url, SecretLoadError},
+    usage::token_usage_for_response,
     ProxyState,
 };
 
@@ -27,6 +31,15 @@ pub(crate) async fn chat_completions(
     State(state): State<ProxyState>,
     headers: HeaderMap,
     body: Bytes,
+) -> Response {
+    proxy_completion_endpoint(state, headers, body, "/v1/chat/completions").await
+}
+
+pub(crate) async fn proxy_completion_endpoint(
+    state: ProxyState,
+    headers: HeaderMap,
+    body: Bytes,
+    endpoint: &'static str,
 ) -> Response {
     let proxy_key = match authenticate_proxy_key(&state, &headers).await {
         Ok(proxy_key) => proxy_key,
@@ -48,10 +61,6 @@ pub(crate) async fn chat_completions(
         .get("stream")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if stream {
-        return not_implemented("Streaming proxy support is not implemented yet").into_response();
-    }
-
     let Some(requested_model_value) = requested_model.as_deref() else {
         return bad_request("Request body must include a string model field").into_response();
     };
@@ -80,7 +89,7 @@ pub(crate) async fn chat_completions(
         .database
         .insert_request_log(NewRequestLog {
             proxy_key_id: proxy_key.id,
-            endpoint: "/v1/chat/completions".to_owned(),
+            endpoint: endpoint.to_owned(),
             requested_model,
             upstream_model: Some(resolved.upstream_model),
             route_name: Some(resolved.route_name),
@@ -100,12 +109,12 @@ pub(crate) async fn chat_completions(
         }
     }
 
-    let upstream_url = match route_url(&route.base_url, "/v1/chat/completions") {
+    let upstream_url = match route_url(&route.base_url, endpoint) {
         Ok(url) => url,
         Err(()) => return internal_error().into_response(),
     };
 
-    debug!(%upstream_url, "forwarding chat completions request");
+    debug!(%upstream_url, %endpoint, "forwarding proxy request");
     let mut request = state.client.post(upstream_url).json(&payload);
     if let Some(api_key) = upstream_api_key {
         request = request.bearer_auth(api_key);
@@ -136,6 +145,20 @@ pub(crate) async fn chat_completions(
 
     let status = upstream_response.status();
     let content_type = content_type_or_json(upstream_response.headers());
+    if stream {
+        return streaming_response(StreamingResponseInput {
+            state,
+            request_log_id,
+            start,
+            request_payload: payload,
+            status,
+            content_type,
+            upstream_stream: upstream_response.bytes_stream(),
+            request_archive,
+            payload_capture_error,
+        });
+    }
+
     let response_body = match upstream_response.bytes().await {
         Ok(body) => body,
         Err(_) => {
@@ -194,133 +217,4 @@ pub(crate) async fn chat_completions(
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);
     response
-}
-
-async fn update_request_log_best_effort(
-    state: &ProxyState,
-    request_log_id: Option<&str>,
-    http_status: Option<u16>,
-    error_category: Option<String>,
-    start: Instant,
-    token_usage: Option<TokenUsage>,
-    provider_usage_json: Option<String>,
-) {
-    let Some(id) = request_log_id else {
-        return;
-    };
-    let _ = state
-        .database
-        .update_request_log(
-            id,
-            RequestLogUpdate {
-                http_status,
-                error_category,
-                duration_ms: Some(start.elapsed().as_millis() as u64),
-                input_tokens: token_usage.as_ref().and_then(|usage| usage.input_tokens),
-                output_tokens: token_usage.as_ref().and_then(|usage| usage.output_tokens),
-                total_tokens: token_usage.as_ref().and_then(|usage| usage.total_tokens),
-                cached_input_tokens: token_usage
-                    .as_ref()
-                    .and_then(|usage| usage.cached_input_tokens),
-                reasoning_tokens: token_usage
-                    .as_ref()
-                    .and_then(|usage| usage.reasoning_tokens),
-                accepted_prediction_tokens: token_usage
-                    .as_ref()
-                    .and_then(|usage| usage.accepted_prediction_tokens),
-                rejected_prediction_tokens: token_usage
-                    .as_ref()
-                    .and_then(|usage| usage.rejected_prediction_tokens),
-                token_source: token_usage.map(|usage| usage.token_source),
-                provider_usage_json,
-            },
-        )
-        .await;
-}
-
-fn token_usage_for_response(
-    request: &Value,
-    response_body: &[u8],
-) -> (Option<TokenUsage>, Option<String>) {
-    let response_json = serde_json::from_slice::<Value>(response_body).ok();
-    let provider_usage = response_json.as_ref().and_then(|value| value.get("usage"));
-    let provider_usage_json = provider_usage.map(Value::to_string);
-    let token_usage = provider_usage
-        .and_then(token_usage_from_provider)
-        .or_else(|| {
-            let response_value = response_json.unwrap_or_else(|| {
-                Value::String(String::from_utf8_lossy(response_body).into_owned())
-            });
-            Some(estimate_token_usage(request, &response_value))
-        });
-
-    (token_usage, provider_usage_json)
-}
-
-async fn capture_payload(
-    state: &ProxyState,
-    request_id: &str,
-    kind: PayloadKind,
-    payload: &[u8],
-) -> Result<ArchivedPayload, String> {
-    if !state.config.payload_capture.default_enabled {
-        return Err("payload capture disabled".to_owned());
-    }
-
-    archive_payload(
-        &state.config.payload_dir,
-        &state.master_key,
-        request_id,
-        kind,
-        payload,
-    )
-    .map_err(|error| error.to_string())
-}
-
-async fn update_payload_after_failure(
-    state: &ProxyState,
-    request_id: Option<&str>,
-    request: Option<ArchivedPayload>,
-    error: Option<String>,
-) {
-    let Some(id) = request_id else {
-        return;
-    };
-    update_payload_capture_best_effort(state, id, request, None, error).await;
-}
-
-async fn update_payload_capture_best_effort(
-    state: &ProxyState,
-    request_id: &str,
-    request: Option<ArchivedPayload>,
-    response: Option<ArchivedPayload>,
-    error: Option<String>,
-) {
-    let status = if error.is_some() {
-        "failed"
-    } else if request.is_some() || response.is_some() {
-        "complete"
-    } else {
-        "disabled"
-    };
-    let _ = state
-        .database
-        .update_payload_capture(
-            request_id,
-            PayloadCaptureUpdate {
-                status: status.to_owned(),
-                error,
-                request_path: request
-                    .as_ref()
-                    .map(|archive| archive.relative_path.clone()),
-                response_path: response
-                    .as_ref()
-                    .map(|archive| archive.relative_path.clone()),
-                request_bytes: request.as_ref().map(|archive| archive.raw_bytes),
-                response_bytes: response.as_ref().map(|archive| archive.raw_bytes),
-                request_hash: request.map(|archive| archive.raw_sha256),
-                response_hash: response.map(|archive| archive.raw_sha256),
-            },
-        )
-        .await;
 }

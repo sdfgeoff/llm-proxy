@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use axum::{
     body::{to_bytes, Body},
     http::{header, HeaderMap, Request, StatusCode},
-    response::Json,
+    response::{IntoResponse, Json},
     routing::post,
 };
 use llm_proxy_core::{
@@ -167,4 +167,147 @@ async fn chat_completions_forwards_configured_upstream_secret() {
         .expect("response");
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn chat_completions_streams_and_records_usage() {
+    let upstream = axum::Router::new().route(
+        "/v1/chat/completions",
+        post(|| async move {
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n",
+                "data: {\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}\n\n",
+                "data: [DONE]\n\n"
+            );
+            (
+                [(header::CONTENT_TYPE, "text/event-stream")],
+                Body::from(body),
+            )
+                .into_response()
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_addr = listener.local_addr().expect("upstream addr");
+    tokio::spawn(async move {
+        axum::serve(listener, upstream)
+            .await
+            .expect("serve upstream");
+    });
+
+    let mut routes = BTreeMap::new();
+    routes.insert(
+        "local".to_owned(),
+        RouteConfig {
+            base_url: Url::parse(&format!("http://{upstream_addr}")).expect("url"),
+            upstream_api_key: None,
+        },
+    );
+    let config = Config {
+        default_route: "local".to_owned(),
+        routes,
+        ..Config::default()
+    };
+    let (state, token, _dir) = state_with_key(config).await;
+    let database = state.database.clone();
+
+    let response = router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/chat/completions")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model":"gpt-5.5","stream":true,"messages":[{"role":"user","content":"hi"}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
+
+    let requests = database.recent_requests(1).await.expect("requests");
+    let detail = database
+        .request_detail(&requests[0].id)
+        .await
+        .expect("request detail")
+        .expect("detail");
+    assert!(detail.stream);
+    assert_eq!(detail.total_tokens, Some(10));
+    assert_eq!(detail.payload_capture_status, "complete");
+}
+
+#[tokio::test]
+async fn responses_endpoint_passes_through_to_configured_upstream() {
+    let upstream = axum::Router::new().route(
+        "/v1/responses",
+        post(|| async move {
+            Json(json!({
+                "id": "resp-test",
+                "object": "response",
+                "usage": { "input_tokens": 7, "output_tokens": 8, "total_tokens": 15 }
+            }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_addr = listener.local_addr().expect("upstream addr");
+    tokio::spawn(async move {
+        axum::serve(listener, upstream)
+            .await
+            .expect("serve upstream");
+    });
+
+    let mut routes = BTreeMap::new();
+    routes.insert(
+        "openai".to_owned(),
+        RouteConfig {
+            base_url: Url::parse(&format!("http://{upstream_addr}")).expect("url"),
+            upstream_api_key: None,
+        },
+    );
+    let config = Config {
+        default_route: "openai".to_owned(),
+        routes,
+        ..Config::default()
+    };
+    let (state, token, _dir) = state_with_key(config).await;
+    let database = state.database.clone();
+
+    let response = router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.5","input":"hello"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let json: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(json["id"], "resp-test");
+
+    let requests = database.recent_requests(1).await.expect("requests");
+    let detail = database
+        .request_detail(&requests[0].id)
+        .await
+        .expect("request detail")
+        .expect("detail");
+    assert_eq!(detail.endpoint, "/v1/responses");
+    assert_eq!(detail.total_tokens, Some(15));
 }

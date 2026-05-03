@@ -10,6 +10,7 @@ rust-version.workspace = true
 axum.workspace = true
 base64.workspace = true
 bytes.workspace = true
+futures-util.workspace = true
 http.workspace = true
 llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-db = { path = "../llm-proxy-db" }
