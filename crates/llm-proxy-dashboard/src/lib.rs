@@ -1,4 +1,5 @@
 mod auth;
+mod dashboard_page;
 mod pages;
 mod payloads;
 mod render;

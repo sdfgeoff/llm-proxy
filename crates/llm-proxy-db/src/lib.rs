@@ -1,4 +1,7 @@
 mod admin;
+mod metrics;
+#[cfg(test)]
+mod metrics_tests;
 mod migrations;
 mod request_rows;
 #[cfg(test)]
@@ -9,6 +12,7 @@ mod secrets;
 use std::path::Path;
 
 pub use admin::ProxyApiKey;
+pub use metrics::{DashboardMetrics, DimensionMetric, HourlyMetric, MetricsOverview, StatusMetric};
 pub use requests::{
     NewRequestLog, PayloadCaptureUpdate, RequestDetail, RequestLogUpdate, RequestSummary,
 };

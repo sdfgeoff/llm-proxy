@@ -12,7 +12,8 @@ use time::Duration;
 
 use crate::{
     auth::{require_admin, session_token_from_headers, AuthState, SESSION_COOKIE},
-    pages::{dashboard_page, render_keys_page, render_upstream_secrets_page},
+    dashboard_page::dashboard_page,
+    pages::{render_keys_page, render_upstream_secrets_page},
     render::{internal_error, page},
     DashboardState,
 };
@@ -48,7 +49,7 @@ pub(crate) async fn index(State(state): State<DashboardState>, headers: HeaderMa
     match require_admin(&state, &headers).await {
         Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
         Ok(AuthState::Unauthenticated) => Redirect::to("/login").into_response(),
-        Ok(AuthState::Authenticated) => dashboard_page(&state).into_response(),
+        Ok(AuthState::Authenticated) => dashboard_page(&state).await,
         Err(response) => response,
     }
 }

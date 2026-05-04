@@ -8,37 +8,6 @@ use crate::{
     DashboardState,
 };
 
-pub(crate) fn dashboard_page(state: &DashboardState) -> Html<String> {
-    Html(format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LLM Proxy</title>
-</head>
-<body>
-  <main>
-    <h1>LLM Proxy</h1>
-    <p>Dashboard scaffold is running.</p>
-    <dl>
-      <dt>Proxy listen</dt><dd>{}</dd>
-      <dt>Admin listen</dt><dd>{}</dd>
-      <dt>Default route</dt><dd>{}</dd>
-    </dl>
-    <nav>
-      <a href="/requests">Requests</a>
-      <a href="/keys">Proxy API keys</a>
-      <a href="/upstream-secrets">Upstream secrets</a>
-      <form method="post" action="/logout"><button type="submit">Log out</button></form>
-    </nav>
-  </main>
-</body>
-</html>"#,
-        state.config.proxy_listen, state.config.admin_listen, state.config.default_route
-    ))
-}
-
 pub(crate) async fn render_requests_page(state: &DashboardState) -> Response {
     let Ok(requests) = state.database.recent_requests(100).await else {
         return internal_error();
