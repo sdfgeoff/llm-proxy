@@ -1,4 +1,4 @@
-use crate::{Database, NewRequestLog, RequestLogUpdate};
+use crate::{DashboardPeriod, Database, NewRequestLog, RequestLogUpdate};
 
 #[tokio::test]
 async fn dashboard_metrics_group_requests_by_time_model_key_and_status() {
@@ -28,7 +28,10 @@ async fn dashboard_metrics_group_requests_by_time_model_key_and_status() {
         .await
         .expect("set ttft");
 
-    let metrics = db.dashboard_metrics().await.expect("metrics");
+    let metrics = db
+        .dashboard_metrics(DashboardPeriod::Last24Hours)
+        .await
+        .expect("metrics");
 
     assert_eq!(metrics.overview.request_count, 2);
     assert_eq!(metrics.overview.total_tokens, 120);
@@ -41,6 +44,65 @@ async fn dashboard_metrics_group_requests_by_time_model_key_and_status() {
     assert_eq!(metrics.by_key.len(), 2);
     assert!(metrics.by_status.iter().any(|row| row.label == "2xx"));
     assert!(metrics.by_status.iter().any(|row| row.label == "5xx"));
+}
+
+#[tokio::test]
+async fn dashboard_metrics_respects_selected_period() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = Database::connect(&dir.path().join("period.sqlite"))
+        .await
+        .expect("connect database");
+    let key = db
+        .create_proxy_api_key("local", "local-hash")
+        .await
+        .expect("create key");
+
+    let recent = insert_metric_request(&db, &key.id, "gpt-5.5", 200, 1000, 10, 10)
+        .await
+        .expect("recent request");
+    let week_old = insert_metric_request(&db, &key.id, "gpt-5.5", 200, 1000, 20, 20)
+        .await
+        .expect("week request");
+    let month_old = insert_metric_request(&db, &key.id, "gpt-5.5", 200, 1000, 30, 30)
+        .await
+        .expect("month request");
+
+    sqlx::query("UPDATE request_log SET started_at = datetime('now', '-3 days') WHERE id = ?")
+        .bind(week_old)
+        .execute(db.pool())
+        .await
+        .expect("shift week request");
+    sqlx::query("UPDATE request_log SET started_at = datetime('now', '-20 days') WHERE id = ?")
+        .bind(month_old)
+        .execute(db.pool())
+        .await
+        .expect("shift month request");
+    sqlx::query("UPDATE request_log SET started_at = datetime('now', '-2 hours') WHERE id = ?")
+        .bind(recent)
+        .execute(db.pool())
+        .await
+        .expect("shift recent request");
+
+    let day_metrics = db
+        .dashboard_metrics(DashboardPeriod::Last24Hours)
+        .await
+        .expect("day metrics");
+    let week_metrics = db
+        .dashboard_metrics(DashboardPeriod::Last7Days)
+        .await
+        .expect("week metrics");
+    let month_metrics = db
+        .dashboard_metrics(DashboardPeriod::Last30Days)
+        .await
+        .expect("month metrics");
+
+    assert_eq!(day_metrics.overview.request_count, 1);
+    assert_eq!(day_metrics.overview.total_tokens, 20);
+    assert_eq!(week_metrics.overview.request_count, 2);
+    assert_eq!(week_metrics.overview.total_tokens, 60);
+    assert_eq!(month_metrics.overview.request_count, 3);
+    assert_eq!(month_metrics.overview.total_tokens, 120);
+    assert_eq!(month_metrics.period, DashboardPeriod::Last30Days);
 }
 
 async fn insert_metric_request(

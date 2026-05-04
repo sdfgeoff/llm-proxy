@@ -12,7 +12,9 @@ mod secrets;
 use std::path::Path;
 
 pub use admin::ProxyApiKey;
-pub use metrics::{DashboardMetrics, DimensionMetric, HourlyMetric, MetricsOverview, StatusMetric};
+pub use metrics::{
+    DashboardMetrics, DashboardPeriod, DimensionMetric, HourlyMetric, MetricsOverview, StatusMetric,
+};
 pub use requests::{
     NewRequestLog, PayloadCaptureUpdate, RequestDetail, RequestLogUpdate, RequestSummary,
 };

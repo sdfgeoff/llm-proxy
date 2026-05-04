@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Form, State},
+    extract::{Form, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
 };
@@ -45,11 +45,20 @@ pub(crate) struct DeleteUpstreamSecretForm {
     name: String,
 }
 
-pub(crate) async fn index(State(state): State<DashboardState>, headers: HeaderMap) -> Response {
+#[derive(Debug, Deserialize, Default)]
+pub(crate) struct DashboardQuery {
+    pub(crate) period: Option<String>,
+}
+
+pub(crate) async fn index(
+    State(state): State<DashboardState>,
+    Query(query): Query<DashboardQuery>,
+    headers: HeaderMap,
+) -> Response {
     match require_admin(&state, &headers).await {
         Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
         Ok(AuthState::Unauthenticated) => Redirect::to("/login").into_response(),
-        Ok(AuthState::Authenticated) => dashboard_page(&state).await,
+        Ok(AuthState::Authenticated) => dashboard_page(&state, query).await,
         Err(response) => response,
     }
 }

@@ -1,7 +1,48 @@
 use crate::{Database, DbError};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DashboardPeriod {
+    Last24Hours,
+    Last7Days,
+    Last30Days,
+}
+
+impl DashboardPeriod {
+    pub fn from_query(value: Option<&str>) -> Self {
+        match value {
+            Some("7d") => Self::Last7Days,
+            Some("30d") => Self::Last30Days,
+            _ => Self::Last24Hours,
+        }
+    }
+
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::Last24Hours => "24h",
+            Self::Last7Days => "7d",
+            Self::Last30Days => "30d",
+        }
+    }
+
+    fn sqlite_range(self) -> &'static str {
+        match self {
+            Self::Last24Hours => "-24 hours",
+            Self::Last7Days => "-7 days",
+            Self::Last30Days => "-30 days",
+        }
+    }
+
+    fn bucket_expr(self) -> &'static str {
+        match self {
+            Self::Last24Hours => "%Y-%m-%d %H:00",
+            Self::Last7Days | Self::Last30Days => "%Y-%m-%d",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DashboardMetrics {
+    pub period: DashboardPeriod,
     pub overview: MetricsOverview,
     pub hourly: Vec<HourlyMetric>,
     pub by_model: Vec<DimensionMetric>,
@@ -46,14 +87,20 @@ pub struct StatusMetric {
 }
 
 impl Database {
-    pub async fn dashboard_metrics(&self) -> Result<DashboardMetrics, DbError> {
-        let overview = self.metrics_overview().await?;
-        let hourly = self.hourly_metrics().await?;
-        let by_model = self.dimension_metrics("requested_model").await?;
-        let by_key = self.dimension_metrics("proxy_api_key.label").await?;
-        let by_status = self.status_metrics().await?;
+    pub async fn dashboard_metrics(
+        &self,
+        period: DashboardPeriod,
+    ) -> Result<DashboardMetrics, DbError> {
+        let overview = self.metrics_overview(period).await?;
+        let hourly = self.hourly_metrics(period).await?;
+        let by_model = self.dimension_metrics(period, "requested_model").await?;
+        let by_key = self
+            .dimension_metrics(period, "proxy_api_key.label")
+            .await?;
+        let by_status = self.status_metrics(period).await?;
 
         Ok(DashboardMetrics {
+            period,
             overview,
             hourly,
             by_model,
@@ -62,7 +109,7 @@ impl Database {
         })
     }
 
-    async fn metrics_overview(&self) -> Result<MetricsOverview, DbError> {
+    async fn metrics_overview(&self, period: DashboardPeriod) -> Result<MetricsOverview, DbError> {
         let row = sqlx::query_as::<_, MetricsOverviewRow>(
             r#"
             SELECT
@@ -81,19 +128,21 @@ impl Database {
                     THEN 1 ELSE 0
                 END), 0) AS error_count
             FROM request_log
+            WHERE started_at >= datetime('now', ?)
             "#,
         )
+        .bind(period.sqlite_range())
         .fetch_one(&self.pool)
         .await?;
 
         Ok(row.into())
     }
 
-    async fn hourly_metrics(&self) -> Result<Vec<HourlyMetric>, DbError> {
-        let rows = sqlx::query_as::<_, HourlyMetricRow>(
+    async fn hourly_metrics(&self, period: DashboardPeriod) -> Result<Vec<HourlyMetric>, DbError> {
+        let sql = format!(
             r#"
             SELECT
-                strftime('%Y-%m-%d %H:00', started_at) AS bucket,
+                strftime('{bucket_expr}', started_at) AS bucket,
                 COUNT(*) AS request_count,
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 AVG(CASE
@@ -102,18 +151,25 @@ impl Database {
                 END) AS avg_tokens_per_second,
                 AVG(time_to_first_token_ms) AS avg_time_to_first_token_ms
             FROM request_log
-            WHERE started_at >= datetime('now', '-24 hours')
+            WHERE started_at >= datetime('now', ?)
             GROUP BY bucket
             ORDER BY bucket
             "#,
-        )
-        .fetch_all(&self.pool)
-        .await?;
+            bucket_expr = period.bucket_expr()
+        );
+        let rows = sqlx::query_as::<_, HourlyMetricRow>(&sql)
+            .bind(period.sqlite_range())
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    async fn dimension_metrics(&self, dimension: &str) -> Result<Vec<DimensionMetric>, DbError> {
+    async fn dimension_metrics(
+        &self,
+        period: DashboardPeriod,
+        dimension: &str,
+    ) -> Result<Vec<DimensionMetric>, DbError> {
         let sql = format!(
             r#"
             SELECT
@@ -127,19 +183,21 @@ impl Database {
                 AVG(request_log.time_to_first_token_ms) AS avg_time_to_first_token_ms
             FROM request_log
             LEFT JOIN proxy_api_key ON proxy_api_key.id = request_log.proxy_key_id
+            WHERE request_log.started_at >= datetime('now', ?)
             GROUP BY 1
             ORDER BY total_tokens DESC, request_count DESC
             LIMIT 10
             "#
         );
         let rows = sqlx::query_as::<_, DimensionMetricRow>(&sql)
+            .bind(period.sqlite_range())
             .fetch_all(&self.pool)
             .await?;
 
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    async fn status_metrics(&self) -> Result<Vec<StatusMetric>, DbError> {
+    async fn status_metrics(&self, period: DashboardPeriod) -> Result<Vec<StatusMetric>, DbError> {
         let rows = sqlx::query_as::<_, StatusMetricRow>(
             r#"
             SELECT
@@ -153,10 +211,12 @@ impl Database {
                 END AS label,
                 COUNT(*) AS request_count
             FROM request_log
+            WHERE started_at >= datetime('now', ?)
             GROUP BY label
             ORDER BY label
             "#,
         )
+        .bind(period.sqlite_range())
         .fetch_all(&self.pool)
         .await?;
 
