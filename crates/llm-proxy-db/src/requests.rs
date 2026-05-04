@@ -19,6 +19,9 @@ pub struct RequestLogUpdate {
     pub http_status: Option<u16>,
     pub error_category: Option<String>,
     pub duration_ms: Option<u64>,
+    pub upstream_first_byte_ms: Option<u64>,
+    pub time_to_first_token_ms: Option<u64>,
+    pub generation_ms: Option<u64>,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub total_tokens: Option<u64>,
@@ -72,6 +75,9 @@ pub struct RequestDetail {
     pub http_status: Option<i64>,
     pub error_category: Option<String>,
     pub duration_ms: Option<i64>,
+    pub upstream_first_byte_ms: Option<i64>,
+    pub time_to_first_token_ms: Option<i64>,
+    pub generation_ms: Option<i64>,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
@@ -131,6 +137,9 @@ impl Database {
             SET http_status = ?,
                 error_category = ?,
                 duration_ms = ?,
+                upstream_first_byte_ms = ?,
+                time_to_first_token_ms = ?,
+                generation_ms = ?,
                 input_tokens = ?,
                 output_tokens = ?,
                 total_tokens = ?,
@@ -146,6 +155,9 @@ impl Database {
         .bind(update.http_status.map(i64::from))
         .bind(update.error_category)
         .bind(update.duration_ms.map(|value| value as i64))
+        .bind(update.upstream_first_byte_ms.map(|value| value as i64))
+        .bind(update.time_to_first_token_ms.map(|value| value as i64))
+        .bind(update.generation_ms.map(|value| value as i64))
         .bind(update.input_tokens.map(|value| value as i64))
         .bind(update.output_tokens.map(|value| value as i64))
         .bind(update.total_tokens.map(|value| value as i64))
@@ -242,6 +254,9 @@ impl Database {
                 request_log.http_status,
                 request_log.error_category,
                 request_log.duration_ms,
+                request_log.upstream_first_byte_ms,
+                request_log.time_to_first_token_ms,
+                request_log.generation_ms,
                 request_log.input_tokens,
                 request_log.output_tokens,
                 request_log.total_tokens,

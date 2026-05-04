@@ -17,17 +17,57 @@ pub(crate) async fn update_request_log_best_effort(
     token_usage: Option<TokenUsage>,
     provider_usage_json: Option<String>,
 ) {
+    update_request_log_with_timing(
+        state,
+        request_log_id,
+        RequestLogCompletion {
+            http_status,
+            error_category,
+            start,
+            timing: RequestTiming::default(),
+            token_usage,
+            provider_usage_json,
+        },
+    )
+    .await;
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct RequestTiming {
+    pub(crate) upstream_first_byte_ms: Option<u64>,
+    pub(crate) time_to_first_token_ms: Option<u64>,
+    pub(crate) generation_ms: Option<u64>,
+}
+
+pub(crate) struct RequestLogCompletion {
+    pub(crate) http_status: Option<u16>,
+    pub(crate) error_category: Option<String>,
+    pub(crate) start: Instant,
+    pub(crate) timing: RequestTiming,
+    pub(crate) token_usage: Option<TokenUsage>,
+    pub(crate) provider_usage_json: Option<String>,
+}
+
+pub(crate) async fn update_request_log_with_timing(
+    state: &ProxyState,
+    request_log_id: Option<&str>,
+    completion: RequestLogCompletion,
+) {
     let Some(id) = request_log_id else {
         return;
     };
+    let token_usage = completion.token_usage;
     let _ = state
         .database
         .update_request_log(
             id,
             RequestLogUpdate {
-                http_status,
-                error_category,
-                duration_ms: Some(start.elapsed().as_millis() as u64),
+                http_status: completion.http_status,
+                error_category: completion.error_category,
+                duration_ms: Some(completion.start.elapsed().as_millis() as u64),
+                upstream_first_byte_ms: completion.timing.upstream_first_byte_ms,
+                time_to_first_token_ms: completion.timing.time_to_first_token_ms,
+                generation_ms: completion.timing.generation_ms,
                 input_tokens: token_usage.as_ref().and_then(|usage| usage.input_tokens),
                 output_tokens: token_usage.as_ref().and_then(|usage| usage.output_tokens),
                 total_tokens: token_usage.as_ref().and_then(|usage| usage.total_tokens),
@@ -44,7 +84,7 @@ pub(crate) async fn update_request_log_best_effort(
                     .as_ref()
                     .and_then(|usage| usage.rejected_prediction_tokens),
                 token_source: token_usage.map(|usage| usage.token_source),
-                provider_usage_json,
+                provider_usage_json: completion.provider_usage_json,
             },
         )
         .await;

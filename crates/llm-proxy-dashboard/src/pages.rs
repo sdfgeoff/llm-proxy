@@ -42,6 +42,9 @@ pub(crate) fn render_request_detail_page(request: &RequestDetail) -> Response {
          <dt>Route</dt><dd>{}</dd>\
          <dt>Status</dt><dd>{}</dd>\
          <dt>Duration</dt><dd>{}</dd>\
+         <dt>Upstream first byte</dt><dd>{}</dd>\
+         <dt>Time to first token</dt><dd>{}</dd>\
+         <dt>Generation duration</dt><dd>{}</dd>\
          <dt>Token source</dt><dd>{}</dd>\
          <dt>Input tokens</dt><dd>{}</dd>\
          <dt>Output tokens</dt><dd>{}</dd>\
@@ -57,6 +60,9 @@ pub(crate) fn render_request_detail_page(request: &RequestDetail) -> Response {
         escape_option(request.route_name.as_deref()),
         format_option_i64(request.http_status),
         format_duration(request.duration_ms),
+        format_duration(request.upstream_first_byte_ms),
+        format_duration(request.time_to_first_token_ms),
+        format_duration(request.generation_ms),
         escape_option(request.token_source.as_deref()),
         format_option_i64(request.input_tokens),
         format_option_i64(request.output_tokens),

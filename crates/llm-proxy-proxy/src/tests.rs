@@ -241,6 +241,9 @@ async fn chat_completions_streams_and_records_usage() {
         .expect("detail");
     assert!(detail.stream);
     assert_eq!(detail.total_tokens, Some(10));
+    assert!(detail.upstream_first_byte_ms.is_some());
+    assert!(detail.time_to_first_token_ms.is_some());
+    assert!(detail.generation_ms.is_some());
     assert_eq!(detail.payload_capture_status, "complete");
 }
 
