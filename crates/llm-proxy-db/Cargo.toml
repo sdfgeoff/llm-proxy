@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 llm-proxy-core = { path = "../llm-proxy-core" }
+serde.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true

@@ -18,7 +18,7 @@ pub use metrics::{
 pub use requests::{
     NewRequestLog, PayloadCaptureUpdate, RequestDetail, RequestLogUpdate, RequestSummary,
 };
-pub use secrets::UpstreamSecret;
+pub use secrets::{UpstreamSecret, UpstreamSecretInfo};
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, SqlitePool};
 use thiserror::Error;
 use tracing::log::LevelFilter;

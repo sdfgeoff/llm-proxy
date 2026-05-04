@@ -1,10 +1,5 @@
 mod auth;
-mod dashboard_charts;
-mod dashboard_page;
-mod pages;
-mod payloads;
 mod render;
-mod request_routes;
 mod routes;
 mod state;
 
@@ -20,26 +15,31 @@ use tracing::info;
 
 pub fn router(state: DashboardState) -> Router {
     Router::new()
-        .route("/", get(routes::index))
-        .route("/health", get(routes::health))
-        .route("/setup", get(routes::setup_page).post(routes::setup))
-        .route("/login", get(routes::login_page).post(routes::login))
+        // Auth (SPA — GET returns shell, POST handles action)
+        .route("/setup", get(routes::spa).post(routes::setup))
+        .route("/login", get(routes::spa).post(routes::login))
         .route("/logout", post(routes::logout))
-        .route("/keys", get(routes::keys_page).post(routes::create_key))
-        .route("/requests", get(request_routes::requests_page))
-        .route("/requests/{id}", get(request_routes::request_detail_page))
-        .route(
-            "/requests/{id}/payload/{kind}",
-            get(request_routes::download_payload),
-        )
-        .route(
-            "/upstream-secrets",
-            get(routes::upstream_secrets_page).post(routes::upsert_upstream_secret),
-        )
-        .route(
-            "/upstream-secrets/delete",
-            post(routes::delete_upstream_secret),
-        )
+        // SPA shell (served for all app routes, with auth check)
+        .route("/", get(routes::spa))
+        .route("/requests", get(routes::spa))
+        .route("/requests/{id}", get(routes::spa))
+        .route("/keys", get(routes::spa))
+        .route("/secrets", get(routes::spa))
+        // Payload download (file, not SPA)
+        .route("/requests/{id}/payload/{kind}", get(routes::download_payload))
+        // API endpoints
+        .route("/api/auth/status", get(routes::api_auth_status))
+        .route("/api/charts", get(routes::api_charts))
+        .route("/api/requests", get(routes::api_requests))
+        .route("/api/requests/{id}", get(routes::api_request_detail))
+        .route("/api/keys", get(routes::api_keys).post(routes::api_create_key))
+        .route("/api/secrets", get(routes::api_secrets).post(routes::api_upsert_secret))
+        .route("/api/secrets/delete", post(routes::api_delete_secret))
+        // Static files
+        // Embedded Vite frontend assets
+        .route("/static/style.css", get(routes::serve_css))
+        .route("/style.css", get(routes::serve_css))
+        .route("/index.js", get(routes::serve_js))
         .with_state(state)
 }
 

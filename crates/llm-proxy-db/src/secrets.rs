@@ -1,4 +1,23 @@
+use serde::Serialize;
+
 use crate::{Database, DbError};
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct UpstreamSecretInfo {
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl UpstreamSecret {
+    pub fn to_info(&self) -> UpstreamSecretInfo {
+        UpstreamSecretInfo {
+            name: self.name.clone(),
+            created_at: self.created_at.clone(),
+            updated_at: self.updated_at.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpstreamSecret {

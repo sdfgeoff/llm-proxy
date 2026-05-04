@@ -5,3 +5,6 @@
 master.key
 *.sqlite
 *.sqlite-*
+crates/llm-proxy-dashboard/frontend/node_modules/
+crates/llm-proxy-dashboard/frontend/dist/
+.claude/

@@ -1,6 +1,7 @@
+use serde::Serialize;
 use crate::{Database, DbError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum DashboardPeriod {
     Last24Hours,
     Last7Days,
@@ -40,7 +41,7 @@ impl DashboardPeriod {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct DashboardMetrics {
     pub period: DashboardPeriod,
     pub overview: MetricsOverview,
@@ -50,7 +51,7 @@ pub struct DashboardMetrics {
     pub by_status: Vec<StatusMetric>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct MetricsOverview {
     pub request_count: i64,
     pub input_tokens: i64,
@@ -62,7 +63,7 @@ pub struct MetricsOverview {
     pub error_count: i64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct HourlyMetric {
     pub bucket: String,
     pub request_count: i64,
@@ -71,7 +72,7 @@ pub struct HourlyMetric {
     pub avg_time_to_first_token_ms: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct DimensionMetric {
     pub label: String,
     pub request_count: i64,
@@ -80,7 +81,7 @@ pub struct DimensionMetric {
     pub avg_time_to_first_token_ms: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct StatusMetric {
     pub label: String,
     pub request_count: i64,

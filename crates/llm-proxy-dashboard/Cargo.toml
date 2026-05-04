@@ -5,12 +5,14 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+build = "build.rs"
 
 [dependencies]
 axum.workspace = true
 llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-db = { path = "../llm-proxy-db" }
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
@@ -19,3 +21,5 @@ zstd.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[build-dependencies]

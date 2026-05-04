@@ -1,3 +1,4 @@
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::request_rows::{RequestDetailRow, RequestSummaryRow};
@@ -45,7 +46,7 @@ pub struct PayloadCaptureUpdate {
     pub response_hash: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RequestSummary {
     pub id: String,
     pub started_at: String,
@@ -61,7 +62,7 @@ pub struct RequestSummary {
     pub payload_capture_status: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RequestDetail {
     pub id: String,
     pub started_at: String,

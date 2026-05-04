@@ -1115,6 +1115,7 @@ dependencies = [
  "llm-proxy-core",
  "llm-proxy-db",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "time",
@@ -1128,6 +1129,7 @@ name = "llm-proxy-db"
 version = "0.1.0"
 dependencies = [
  "llm-proxy-core",
+ "serde",
  "sqlx",
  "tempfile",
  "thiserror",

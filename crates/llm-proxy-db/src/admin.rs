@@ -1,9 +1,10 @@
+use serde::Serialize;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{Database, DbError};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ProxyApiKey {
     pub id: String,
     pub label: String,

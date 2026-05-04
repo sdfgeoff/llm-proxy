@@ -1,6 +1,7 @@
 use axum::{
-    extract::{Form, Query, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    body::Body,
+    extract::{Form, Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{Html, IntoResponse, Redirect, Response},
 };
 use llm_proxy_core::auth::{
@@ -12,11 +13,79 @@ use time::Duration;
 
 use crate::{
     auth::{require_admin, session_token_from_headers, AuthState, SESSION_COOKIE},
-    dashboard_page::dashboard_page,
-    pages::{render_keys_page, render_upstream_secrets_page},
-    render::{internal_error, page},
+    render::internal_error,
     DashboardState,
 };
+
+/* ── embedded frontend (Vite dist output) ──────────────── */
+
+const SPA_HTML: &[u8] = include_bytes!("../frontend/dist/index.html");
+const SPA_CSS: &[u8] = include_bytes!("../frontend/dist/style.css");
+const SPA_JS: &[u8] = include_bytes!("../frontend/dist/index.js");
+
+/* ── static file helpers ──────────────────────────────── */
+
+fn serve_static(content_type: &str, bytes: &'static [u8]) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=31536000")
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
+/* ── public static routes ─────────────────────────────── */
+
+pub(crate) async fn serve_css() -> Response {
+    serve_static("text/css", SPA_CSS)
+}
+
+pub(crate) async fn serve_js() -> Response {
+    serve_static("application/javascript", SPA_JS)
+}
+
+/* ── SPA shell ────────────────────────────────────────── */
+
+pub(crate) async fn spa(
+    uri: Uri,
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let path = uri.path();
+    // Allow unauthenticated access to /setup and /login
+    if !matches!(path, "/setup" | "/login") {
+        match require_admin(&state, &headers).await {
+            Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+            Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+            Ok(AuthState::Authenticated) => {}
+            Err(response) => return response,
+        }
+    }
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(SPA_HTML))
+        .unwrap()
+}
+
+/* ── auth status API ──────────────────────────────────── */
+
+pub(crate) async fn api_auth_status(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let status = match require_admin(&state, &headers).await {
+        Ok(AuthState::NeedsSetup) => "needs_setup",
+        Ok(AuthState::Unauthenticated) => "unauthenticated",
+        Ok(AuthState::Authenticated) => "authenticated",
+        Err(_) => "unauthenticated",
+    };
+    json_response(serde_json::json!({ "status": status }).to_string())
+}
+
+/* ── auth routes (POST only, SPA handles the UI) ──────── */
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct SetupForm {
@@ -27,63 +96,6 @@ pub(crate) struct SetupForm {
 #[derive(Debug, Deserialize)]
 pub(crate) struct LoginForm {
     password: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct CreateKeyForm {
-    label: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct UpstreamSecretForm {
-    name: String,
-    value: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct DeleteUpstreamSecretForm {
-    name: String,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub(crate) struct DashboardQuery {
-    pub(crate) period: Option<String>,
-}
-
-pub(crate) async fn index(
-    State(state): State<DashboardState>,
-    Query(query): Query<DashboardQuery>,
-    headers: HeaderMap,
-) -> Response {
-    match require_admin(&state, &headers).await {
-        Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
-        Ok(AuthState::Unauthenticated) => Redirect::to("/login").into_response(),
-        Ok(AuthState::Authenticated) => dashboard_page(&state, query).await,
-        Err(response) => response,
-    }
-}
-
-pub(crate) async fn health() -> impl IntoResponse {
-    "ok"
-}
-
-pub(crate) async fn setup_page(State(state): State<DashboardState>) -> Response {
-    match state.database.has_admin_account().await {
-        Ok(true) => Redirect::to("/login").into_response(),
-        Ok(false) => Html(page(
-            "Setup",
-            r#"
-<h1>Setup</h1>
-<form method="post" action="/setup">
-  <label>Setup token <input name="token" type="password" required></label>
-  <label>Password <input name="password" type="password" minlength="8" required></label>
-  <button type="submit">Create admin</button>
-</form>
-"#,
-        ))
-        .into_response(),
-        Err(_) => internal_error(),
-    }
 }
 
 pub(crate) async fn setup(
@@ -97,20 +109,14 @@ pub(crate) async fn setup(
     }
 
     if state.setup_token.as_deref() != Some(form.token.as_str()) {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Html(page("Setup", "<p>Invalid setup token.</p>")),
-        )
+        return (StatusCode::UNAUTHORIZED, json_response("\"Invalid setup token\"".into()))
             .into_response();
     }
 
     if form.password.len() < 8 {
         return (
             StatusCode::BAD_REQUEST,
-            Html(page(
-                "Setup",
-                "<p>Password must be at least 8 characters.</p>",
-            )),
+            json_response("\"Password must be at least 8 characters\"".into()),
         )
             .into_response();
     }
@@ -120,30 +126,8 @@ pub(crate) async fn setup(
     };
 
     match state.database.set_admin_password_hash(&password_hash).await {
-        Ok(()) => Redirect::to("/login").into_response(),
+        Ok(()) => json_response(serde_json::json!({ "ok": true }).to_string()),
         Err(_) => internal_error(),
-    }
-}
-
-pub(crate) async fn login_page(
-    State(state): State<DashboardState>,
-    headers: HeaderMap,
-) -> Response {
-    match require_admin(&state, &headers).await {
-        Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
-        Ok(AuthState::Authenticated) => Redirect::to("/").into_response(),
-        Ok(AuthState::Unauthenticated) => Html(page(
-            "Login",
-            r#"
-<h1>Login</h1>
-<form method="post" action="/login">
-  <label>Password <input name="password" type="password" required></label>
-  <button type="submit">Log in</button>
-</form>
-"#,
-        ))
-        .into_response(),
-        Err(response) => response,
     }
 }
 
@@ -158,7 +142,7 @@ pub(crate) async fn login(
     if !verify_admin_password(&form.password, &password_hash) {
         return (
             StatusCode::UNAUTHORIZED,
-            Html(page("Login", "<p>Invalid password.</p>")),
+            json_response("\"Invalid password\"".into()),
         )
             .into_response();
     }
@@ -174,7 +158,7 @@ pub(crate) async fn login(
         return internal_error();
     }
 
-    let mut response = Redirect::to("/").into_response();
+    let mut response = json_response(serde_json::json!({ "ok": true }).to_string());
     response.headers_mut().insert(
         header::SET_COOKIE,
         HeaderValue::from_str(&format!(
@@ -202,21 +186,124 @@ pub(crate) async fn logout(State(state): State<DashboardState>, headers: HeaderM
     response
 }
 
-pub(crate) async fn keys_page(State(state): State<DashboardState>, headers: HeaderMap) -> Response {
-    match require_admin(&state, &headers).await {
-        Ok(AuthState::Authenticated) => render_keys_page(&state, None).await,
-        Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
-        Ok(AuthState::Unauthenticated) => Redirect::to("/login").into_response(),
-        Err(response) => response,
+/* ── API endpoints ────────────────────────────────────── */
+
+#[derive(Debug, Deserialize, Default)]
+pub(crate) struct DashboardQuery {
+    pub(crate) period: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CreateKeyForm {
+    label: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SecretForm {
+    name: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DeleteSecretForm {
+    name: String,
+}
+
+fn json_response(json: String) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json))
+        .unwrap()
+}
+
+pub(crate) async fn api_charts(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+    Query(query): Query<DashboardQuery>,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    let period = llm_proxy_db::DashboardPeriod::from_query(query.period.as_deref());
+    match state.database.dashboard_metrics(period).await {
+        Ok(metrics) => json_response(serde_json::to_string(&metrics).unwrap_or_default()),
+        Err(_) => internal_error(),
     }
 }
 
-pub(crate) async fn create_key(
+pub(crate) async fn api_requests(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    match state.database.recent_requests(100).await {
+        Ok(requests) => json_response(serde_json::to_string(&requests).unwrap_or_default()),
+        Err(_) => internal_error(),
+    }
+}
+
+pub(crate) async fn api_request_detail(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    match state.database.request_detail(&id).await {
+        Ok(Some(detail)) => json_response(serde_json::to_string(&detail).unwrap_or_default()),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            json_response("\"Not found\"".into()),
+        )
+            .into_response(),
+        Err(_) => internal_error(),
+    }
+}
+
+pub(crate) async fn api_keys(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    match state.database.list_proxy_api_keys().await {
+        Ok(keys) => json_response(serde_json::to_string(&keys).unwrap_or_default()),
+        Err(_) => internal_error(),
+    }
+}
+
+pub(crate) async fn api_create_key(
     State(state): State<DashboardState>,
     headers: HeaderMap,
     Form(form): Form<CreateKeyForm>,
 ) -> Response {
-    match require_admin(&state, &headers).await {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
         Ok(AuthState::Authenticated) => {}
         Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
         Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
@@ -225,39 +312,49 @@ pub(crate) async fn create_key(
 
     let label = form.label.trim();
     if label.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Html(page("API Keys", "<p>Key label is required.</p>")),
-        )
+        return (StatusCode::BAD_REQUEST, json_response("\"Label is required\"".into()))
             .into_response();
     }
 
     let token = generate_proxy_api_key();
     let hash = hash_lookup_token(&token);
     match state.database.create_proxy_api_key(label, &hash).await {
-        Ok(_) => render_keys_page(&state, Some(token)).await,
+        Ok(_) => {
+            let resp = serde_json::json!({ "token": token });
+            json_response(resp.to_string())
+        }
         Err(_) => internal_error(),
     }
 }
 
-pub(crate) async fn upstream_secrets_page(
+pub(crate) async fn api_secrets(
     State(state): State<DashboardState>,
     headers: HeaderMap,
 ) -> Response {
-    match require_admin(&state, &headers).await {
-        Ok(AuthState::Authenticated) => render_upstream_secrets_page(&state, None).await,
-        Ok(AuthState::NeedsSetup) => Redirect::to("/setup").into_response(),
-        Ok(AuthState::Unauthenticated) => Redirect::to("/login").into_response(),
-        Err(response) => response,
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    match state.database.list_upstream_secrets().await {
+        Ok(secrets) => {
+            let infos = secrets.iter().map(|s| s.to_info()).collect::<Vec<_>>();
+            json_response(serde_json::to_string(&infos).unwrap_or_default())
+        }
+        Err(_) => internal_error(),
     }
 }
 
-pub(crate) async fn upsert_upstream_secret(
+pub(crate) async fn api_upsert_secret(
     State(state): State<DashboardState>,
     headers: HeaderMap,
-    Form(form): Form<UpstreamSecretForm>,
+    Form(form): Form<SecretForm>,
 ) -> Response {
-    match require_admin(&state, &headers).await {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
         Ok(AuthState::Authenticated) => {}
         Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
         Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
@@ -266,13 +363,7 @@ pub(crate) async fn upsert_upstream_secret(
 
     let name = form.name.trim();
     if name.is_empty() || form.value.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Html(page(
-                "Upstream Secrets",
-                "<p>Secret name and value are required.</p>",
-            )),
-        )
+        return (StatusCode::BAD_REQUEST, json_response("\"Name and value are required\"".into()))
             .into_response();
     }
 
@@ -285,17 +376,18 @@ pub(crate) async fn upsert_upstream_secret(
         .upsert_upstream_secret(name, &encrypted.ciphertext, &encrypted.nonce)
         .await
     {
-        Ok(()) => render_upstream_secrets_page(&state, Some("Secret saved.")).await,
+        Ok(()) => json_response("\"ok\"".into()),
         Err(_) => internal_error(),
     }
 }
 
-pub(crate) async fn delete_upstream_secret(
+pub(crate) async fn api_delete_secret(
     State(state): State<DashboardState>,
     headers: HeaderMap,
-    Form(form): Form<DeleteUpstreamSecretForm>,
+    Form(form): Form<DeleteSecretForm>,
 ) -> Response {
-    match require_admin(&state, &headers).await {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
         Ok(AuthState::Authenticated) => {}
         Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
         Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
@@ -307,7 +399,76 @@ pub(crate) async fn delete_upstream_secret(
         .delete_upstream_secret(form.name.trim())
         .await
     {
-        Ok(()) => render_upstream_secrets_page(&state, Some("Secret deleted.")).await,
+        Ok(()) => json_response("\"ok\"".into()),
         Err(_) => internal_error(),
     }
+}
+
+/* ── payload download (file endpoint, not SPA) ─────────── */
+
+pub(crate) async fn download_payload(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+    Path((id, kind)): Path<(String, String)>,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    let detail = match state.database.request_detail(&id).await {
+        Ok(Some(detail)) => detail,
+        Ok(None) => return (StatusCode::NOT_FOUND, Html::<&str>("<p>Not found</p>")).into_response(),
+        Err(_) => return internal_error(),
+    };
+
+    let path = match kind.as_str() {
+        "request" => detail.request_payload_path.as_deref(),
+        "response" => detail.response_payload_path.as_deref(),
+        _ => None,
+    };
+
+    let Some(path) = path else {
+        return (StatusCode::NOT_FOUND, Html::<&str>("<p>Payload not found</p>")).into_response();
+    };
+
+    let relative_path = path;
+    if relative_path.contains("..") || relative_path.starts_with('/') {
+        return internal_error();
+    }
+
+    let stored = match std::fs::read(state.config.payload_dir.join(relative_path)) {
+        Ok(data) => data,
+        Err(_) => return internal_error(),
+    };
+
+    const NONCE_BYTES: usize = 24;
+    if stored.len() <= NONCE_BYTES {
+        return internal_error();
+    }
+
+    let (nonce, ciphertext) = stored.split_at(NONCE_BYTES);
+    let compressed = match state.master_key.decrypt_bytes(ciphertext, nonce) {
+        Ok(data) => data,
+        Err(_) => return internal_error(),
+    };
+    let bytes = match zstd::decode_all(compressed.as_slice()) {
+        Ok(data) => data,
+        Err(_) => return internal_error(),
+    };
+
+    let mut response = Response::new(Body::from(bytes));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{id}_{kind}.json\""))
+            .expect("content disposition should be header-safe"),
+    );
+    response
 }
