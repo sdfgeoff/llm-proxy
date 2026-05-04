@@ -29,6 +29,13 @@ pub(crate) async fn authenticate_proxy_key(
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    if let Some(token) = anthropic_api_key(headers) {
+        return Some(token);
+    }
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     value.strip_prefix("Bearer ")
+}
+
+fn anthropic_api_key(headers: &HeaderMap) -> Option<&str> {
+    headers.get("x-api-key")?.to_str().ok()
 }

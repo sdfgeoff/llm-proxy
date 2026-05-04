@@ -116,8 +116,9 @@ pub(crate) async fn proxy_completion_endpoint(
 
     debug!(%upstream_url, %endpoint, "forwarding proxy request");
     let mut request = state.client.post(upstream_url).json(&payload);
+    request = forward_endpoint_headers(request, endpoint, &headers);
     if let Some(api_key) = upstream_api_key {
-        request = request.bearer_auth(api_key);
+        request = apply_upstream_auth(request, endpoint, api_key);
     }
     let upstream_response = match request.send().await {
         Ok(response) => response,
@@ -217,4 +218,31 @@ pub(crate) async fn proxy_completion_endpoint(
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);
     response
+}
+
+fn forward_endpoint_headers(
+    mut request: reqwest::RequestBuilder,
+    endpoint: &str,
+    headers: &HeaderMap,
+) -> reqwest::RequestBuilder {
+    if endpoint == "/v1/messages" {
+        for name in ["anthropic-version", "anthropic-beta"] {
+            if let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) {
+                request = request.header(name, value);
+            }
+        }
+    }
+    request
+}
+
+fn apply_upstream_auth(
+    request: reqwest::RequestBuilder,
+    endpoint: &str,
+    api_key: String,
+) -> reqwest::RequestBuilder {
+    if endpoint == "/v1/messages" {
+        request.header("x-api-key", api_key)
+    } else {
+        request.bearer_auth(api_key)
+    }
 }

@@ -2,6 +2,7 @@ mod auth;
 mod chat;
 mod handlers;
 mod logging;
+mod messages_endpoint;
 mod models;
 mod payload;
 mod responses;
@@ -9,6 +10,9 @@ mod responses_endpoint;
 mod streaming;
 mod upstream;
 mod usage;
+
+#[cfg(test)]
+mod anthropic_tests;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -49,6 +53,10 @@ pub fn router(state: ProxyState) -> Router {
         .route(
             "/v1/responses",
             axum::routing::post(responses_endpoint::responses),
+        )
+        .route(
+            "/v1/messages",
+            axum::routing::post(messages_endpoint::messages),
         )
         .with_state(state)
 }
