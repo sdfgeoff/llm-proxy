@@ -9,7 +9,7 @@ use axum::{
 use llm_proxy_core::routing::resolve_route;
 use llm_proxy_db::NewRequestLog;
 use serde_json::Value;
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::{
     auth::{authenticate_proxy_key, AuthFailure},
@@ -122,7 +122,8 @@ pub(crate) async fn proxy_completion_endpoint(
     }
     let upstream_response = match request.send().await {
         Ok(response) => response,
-        Err(_) => {
+        Err(e) => {
+            error!(error = %e, "upstream request failed");
             update_payload_after_failure(
                 &state,
                 request_log_id.as_deref(),
@@ -162,7 +163,8 @@ pub(crate) async fn proxy_completion_endpoint(
 
     let response_body = match upstream_response.bytes().await {
         Ok(body) => body,
-        Err(_) => {
+        Err(e) => {
+            error!(error = %e, endpoint = %endpoint, "failed to read upstream response body");
             update_payload_after_failure(
                 &state,
                 request_log_id.as_deref(),

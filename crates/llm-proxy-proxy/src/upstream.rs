@@ -1,6 +1,7 @@
 use axum::http::header;
 use llm_proxy_core::MasterKey;
 use serde_json::Value;
+use tracing::error;
 use url::Url;
 
 use crate::ProxyState;
@@ -11,11 +12,17 @@ pub(crate) enum SecretLoadError {
 }
 
 pub(crate) async fn fetch_upstream_models(state: &ProxyState, url: Url) -> Result<Vec<Value>, ()> {
-    let response = state.client.get(url).send().await.map_err(|_| ())?;
+    let response = state.client.get(url).send().await.map_err(|e| {
+        error!(error = %e, "failed to fetch upstream models");
+        ()
+    })?;
     if !response.status().is_success() {
         return Err(());
     }
-    let body = response.json::<Value>().await.map_err(|_| ())?;
+    let body = response.json::<Value>().await.map_err(|e| {
+        error!(error = %e, "failed to parse upstream models response");
+        ()
+    })?;
     Ok(body
         .get("data")
         .and_then(Value::as_array)

@@ -6,6 +6,7 @@ use axum::{
     response::Response,
 };
 use futures_util::{stream, Stream, StreamExt};
+use tracing::error;
 use llm_proxy_core::tokens::{estimate_token_usage, token_usage_from_provider, TokenUsage};
 use serde_json::Value;
 
@@ -76,7 +77,8 @@ where
                 state.response_body.extend_from_slice(&chunk);
                 Ok(Some((chunk, state)))
             }
-            Some(Err(_)) => {
+            Some(Err(e)) => {
+                error!(error = %e, "upstream stream failed");
                 finalize_streaming_request(state, Some("upstream_stream".to_owned())).await;
                 Err(io::Error::new(
                     io::ErrorKind::ConnectionAborted,
