@@ -115,7 +115,7 @@ pub(crate) async fn proxy_completion_endpoint(
     };
 
     debug!(%upstream_url, %endpoint, "forwarding proxy request");
-    let mut request = state.client.post(upstream_url).json(&payload);
+    let mut request = state.client.post(upstream_url.clone()).json(&payload);
     request = forward_endpoint_headers(request, endpoint, &headers);
     if let Some(api_key) = upstream_api_key {
         request = apply_upstream_auth(request, endpoint, api_key);
@@ -123,7 +123,7 @@ pub(crate) async fn proxy_completion_endpoint(
     let upstream_response = match request.send().await {
         Ok(response) => response,
         Err(e) => {
-            error!(error = %e, "upstream request failed");
+            error!(error = %e, endpoint = %endpoint, upstream_url = %upstream_url, "upstream request failed");
             update_payload_after_failure(
                 &state,
                 request_log_id.as_deref(),
@@ -164,7 +164,7 @@ pub(crate) async fn proxy_completion_endpoint(
     let response_body = match upstream_response.bytes().await {
         Ok(body) => body,
         Err(e) => {
-            error!(error = %e, endpoint = %endpoint, "failed to read upstream response body");
+            error!(error = %e, endpoint = %endpoint, upstream_url = %upstream_url, "failed to read upstream response body");
             update_payload_after_failure(
                 &state,
                 request_log_id.as_deref(),
