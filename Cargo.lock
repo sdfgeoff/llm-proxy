@@ -1115,6 +1115,7 @@ dependencies = [
  "llm-proxy-core",
  "llm-proxy-db",
  "serde",
+ "tempfile",
  "thiserror",
  "time",
  "tokio",
