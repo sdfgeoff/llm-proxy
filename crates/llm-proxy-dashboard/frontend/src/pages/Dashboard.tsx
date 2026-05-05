@@ -123,29 +123,31 @@ export default function Dashboard() {
       </section>
       <section>
         <h2>Overview</h2>
-        <dl>
-          <dt>Requests</dt><dd>{o.request_count}</dd>
-          <dt>Total tokens</dt><dd>{o.total_tokens}</dd>
-          <dt>Input tokens</dt><dd>{o.input_tokens}</dd>
-          <dt>Output tokens</dt><dd>{o.output_tokens}</dd>
-          <dt>Avg duration</dt><dd>{o.avg_duration_ms != null ? `${o.avg_duration_ms} ms` : '-'}</dd>
-          <dt>Avg tokens/sec</dt><dd>{o.avg_tokens_per_second ?? '-'}</dd>
-          <dt>Avg TTFT</dt><dd>{o.avg_time_to_first_token_ms != null ? `${o.avg_time_to_first_token_ms} ms` : '-'}</dd>
-          <dt>Errors</dt><dd>{o.error_count}</dd>
-        </dl>
+        <div className="stat-bar">
+          <div className="stat-item"><span className="stat-label">Requests</span><span className="stat-value">{o.request_count}</span></div>
+          <div className="stat-item"><span className="stat-label">Total tokens</span><span className="stat-value">{o.total_tokens.toLocaleString()}</span></div>
+          <div className="stat-item"><span className="stat-label">Input tokens</span><span className="stat-value">{o.input_tokens.toLocaleString()}</span></div>
+          <div className="stat-item"><span className="stat-label">Output tokens</span><span className="stat-value">{o.output_tokens.toLocaleString()}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg duration</span><span className="stat-value">{o.avg_duration_ms != null ? `${o.avg_duration_ms} ms` : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg tokens/sec</span><span className="stat-value">{o.avg_tokens_per_second ?? '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg TTFT</span><span className="stat-value">{o.avg_time_to_first_token_ms != null ? `${o.avg_time_to_first_token_ms} ms` : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Errors</span><span className="stat-value">{o.error_count}</span></div>
+        </div>
       </section>
       <section>
-        <h2>Traffic over time</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(540px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div><canvas id="chart-requests" /></div>
           <div><canvas id="chart-tokens" /></div>
+        </div>
+      </section>
+      <section>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div><canvas id="chart-tokens-per-second" /></div>
           <div><canvas id="chart-ttft" /></div>
         </div>
       </section>
       <section>
-        <h2>Breakdowns</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(540px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
           <div><canvas id="chart-models" /></div>
           <div><canvas id="chart-keys" /></div>
           <div><canvas id="chart-status" /></div>

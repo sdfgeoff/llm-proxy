@@ -4,7 +4,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   margin: 0;
   padding: 2rem;
-  max-width: 960px;
+  max-width: 1440px;
   color: #1e293b;
   background: #f8fafc;
 }
@@ -28,6 +28,11 @@ h2 {
 
 dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0; }
 dt { font-weight: 600; color: #475569; }
+
+.stat-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 0; }
+.stat-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem 1rem; }
+.stat-item .stat-label { font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
+.stat-item .stat-value { font-size: 1.3rem; font-weight: 700; color: #1e293b; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #e2e8f0; }
@@ -53,7 +58,7 @@ pre {
   background: #1e293b; color: #e2e8f0; padding: 1rem;
   border-radius: 6px; overflow-x: auto; font-size: 0.85rem;
 }
-canvas { max-width: 720px; }
+canvas { width: 100%; max-width: 100%; height: 300px; }
 
 .empty { color: #64748b; font-style: italic; }
 .error { color: #dc2626; }
