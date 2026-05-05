@@ -135,19 +135,15 @@ export default function Dashboard() {
         </div>
       </section>
       <section>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: 16 }}>
           <div><canvas id="chart-requests" /></div>
           <div><canvas id="chart-tokens" /></div>
-        </div>
-      </section>
-      <section>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div><canvas id="chart-tokens-per-second" /></div>
           <div><canvas id="chart-ttft" /></div>
         </div>
       </section>
       <section>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: 16 }}>
           <div><canvas id="chart-models" /></div>
           <div><canvas id="chart-keys" /></div>
           <div><canvas id="chart-status" /></div>
