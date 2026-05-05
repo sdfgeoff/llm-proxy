@@ -11,6 +11,13 @@ export default function Dashboard() {
   const { data, loading, error } = useApiJson<DashboardMetrics>(`/api/charts?period=${period}`);
   const chartRefs = useRef<Map<string, any>>(new Map());
 
+  const fmt = (n: number): string => {
+    if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+    if (Number.isInteger(n)) return n.toLocaleString();
+    return n.toFixed(1);
+  };
+
   useEffect(() => {
     chartRefs.current.forEach((c) => c.destroy());
     chartRefs.current.clear();
@@ -124,14 +131,14 @@ export default function Dashboard() {
       <section>
         <h2>Overview</h2>
         <div className="stat-bar">
-          <div className="stat-item"><span className="stat-label">Requests</span><span className="stat-value">{o.request_count}</span></div>
-          <div className="stat-item"><span className="stat-label">Total tokens</span><span className="stat-value">{o.total_tokens.toLocaleString()}</span></div>
-          <div className="stat-item"><span className="stat-label">Input tokens</span><span className="stat-value">{o.input_tokens.toLocaleString()}</span></div>
-          <div className="stat-item"><span className="stat-label">Output tokens</span><span className="stat-value">{o.output_tokens.toLocaleString()}</span></div>
-          <div className="stat-item"><span className="stat-label">Avg duration</span><span className="stat-value">{o.avg_duration_ms != null ? `${o.avg_duration_ms} ms` : '-'}</span></div>
-          <div className="stat-item"><span className="stat-label">Avg tokens/sec</span><span className="stat-value">{o.avg_tokens_per_second ?? '-'}</span></div>
-          <div className="stat-item"><span className="stat-label">Avg TTFT</span><span className="stat-value">{o.avg_time_to_first_token_ms != null ? `${o.avg_time_to_first_token_ms} ms` : '-'}</span></div>
-          <div className="stat-item"><span className="stat-label">Errors</span><span className="stat-value">{o.error_count}</span></div>
+          <div className="stat-item"><span className="stat-label">Requests</span><span className="stat-value">{fmt(o.request_count)}</span></div>
+          <div className="stat-item"><span className="stat-label">Total tokens</span><span className="stat-value">{fmt(o.total_tokens)}</span></div>
+          <div className="stat-item"><span className="stat-label">Input tokens</span><span className="stat-value">{fmt(o.input_tokens)}</span></div>
+          <div className="stat-item"><span className="stat-label">Output tokens</span><span className="stat-value">{fmt(o.output_tokens)}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg duration</span><span className="stat-value">{o.avg_duration_ms != null ? fmt(o.avg_duration_ms) + ' ms' : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg tokens/sec</span><span className="stat-value">{o.avg_tokens_per_second != null ? fmt(o.avg_tokens_per_second) : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg TTFT</span><span className="stat-value">{o.avg_time_to_first_token_ms != null ? fmt(o.avg_time_to_first_token_ms) + ' ms' : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Errors</span><span className="stat-value">{fmt(o.error_count)}</span></div>
         </div>
       </section>
       <section>
