@@ -8,6 +8,7 @@ fn main() {
         for file in &[
             "frontend/index.html",
             "frontend/package.json",
+            "frontend/package-lock.json",
             "frontend/vite.config.ts",
             "frontend/tsconfig.json",
         ] {
@@ -54,7 +55,7 @@ fn main() {
             .output();
         match build {
             Ok(out) if out.status.success() => {
-                println!("cargo:frontend built successfully");
+                println!("cargo:warning=frontend built successfully");
             }
             Ok(out) => {
                 let err = String::from_utf8_lossy(&out.stderr);

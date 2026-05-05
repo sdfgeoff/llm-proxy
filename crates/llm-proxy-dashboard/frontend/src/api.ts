@@ -57,6 +57,8 @@ export interface Overview {
 export interface HourlyBucket {
   bucket: string;
   request_count: number;
+  input_tokens: number;
+  output_tokens: number;
   total_tokens: number;
   avg_tokens_per_second: number | null;
   avg_time_to_first_token_ms: number | null;

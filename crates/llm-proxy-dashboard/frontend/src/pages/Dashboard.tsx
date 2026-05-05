@@ -44,7 +44,33 @@ export default function Dashboard() {
     };
 
     mk('chart-requests', 'line', blue, 'Requests', m.hourly.map((h) => h.request_count), 'Requests over time');
-    mk('chart-tokens', 'line', blue, 'Tokens', m.hourly.map((h) => h.total_tokens), 'Tokens over time');
+
+    const stackedId = 'chart-tokens';
+    const stackedEl = document.getElementById(stackedId);
+    if (stackedEl) {
+      const purple = '#7c3aed';
+      const inputLabel = 'Input tokens';
+      const outputLabel = 'Output tokens';
+      const c = new Chart(stackedEl, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: inputLabel, data: m.hourly.map((h) => h.input_tokens), borderColor: purple, backgroundColor: purple + '44', fill: true, tension: 0.2 },
+            { label: outputLabel, data: m.hourly.map((h) => h.output_tokens), borderColor: blue, backgroundColor: blue + '44', fill: true, tension: 0.2 },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { title: { display: true, text: 'Tokens over time', font: { size: 14 } }, legend: {} },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 45 } },
+            y: { stacked: true, grid: { color: grid }, beginAtZero: true },
+          },
+        },
+      });
+      chartRefs.current.set(stackedId, c);
+    }
     mk('chart-tokens-per-second', 'line', teal, 'Tokens/sec', m.hourly.map((h) => h.avg_tokens_per_second || 0), 'Avg tokens/sec');
     mk('chart-ttft', 'line', blue, 'TTFT (ms)', m.hourly.map((h) => h.avg_time_to_first_token_ms || 0), 'Avg time to first token');
 
@@ -110,22 +136,20 @@ export default function Dashboard() {
       </section>
       <section>
         <h2>Traffic over time</h2>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-requests" /></div>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-tokens" /></div>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-tokens-per-second" /></div>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-ttft" /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(540px, 1fr))', gap: 16 }}>
+          <div><canvas id="chart-requests" /></div>
+          <div><canvas id="chart-tokens" /></div>
+          <div><canvas id="chart-tokens-per-second" /></div>
+          <div><canvas id="chart-ttft" /></div>
+        </div>
       </section>
       <section>
-        <h2>By model</h2>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-models" /></div>
-      </section>
-      <section>
-        <h2>By API key</h2>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-keys" /></div>
-      </section>
-      <section>
-        <h2>Status rates</h2>
-        <div style={{ maxWidth: 720 }}><canvas id="chart-status" /></div>
+        <h2>Breakdowns</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(540px, 1fr))', gap: 16 }}>
+          <div><canvas id="chart-models" /></div>
+          <div><canvas id="chart-keys" /></div>
+          <div><canvas id="chart-status" /></div>
+        </div>
       </section>
     </>
   );

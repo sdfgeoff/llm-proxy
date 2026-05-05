@@ -67,6 +67,8 @@ pub struct MetricsOverview {
 pub struct HourlyMetric {
     pub bucket: String,
     pub request_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
     pub total_tokens: i64,
     pub avg_tokens_per_second: Option<f64>,
     pub avg_time_to_first_token_ms: Option<f64>,
@@ -145,6 +147,8 @@ impl Database {
             SELECT
                 strftime('{bucket_expr}', started_at) AS bucket,
                 COUNT(*) AS request_count,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 AVG(CASE
                     WHEN duration_ms > 0 AND output_tokens IS NOT NULL
@@ -256,6 +260,8 @@ impl From<MetricsOverviewRow> for MetricsOverview {
 struct HourlyMetricRow {
     bucket: String,
     request_count: i64,
+    input_tokens: i64,
+    output_tokens: i64,
     total_tokens: i64,
     avg_tokens_per_second: Option<f64>,
     avg_time_to_first_token_ms: Option<f64>,
@@ -266,6 +272,8 @@ impl From<HourlyMetricRow> for HourlyMetric {
         Self {
             bucket: row.bucket,
             request_count: row.request_count,
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
             total_tokens: row.total_tokens,
             avg_tokens_per_second: row.avg_tokens_per_second,
             avg_time_to_first_token_ms: row.avg_time_to_first_token_ms,
