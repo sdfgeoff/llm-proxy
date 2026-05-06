@@ -18,6 +18,13 @@ export default function Dashboard() {
     return n.toFixed(1);
   };
 
+  const fmtMs = (ms: number): string => {
+    if (ms >= 60_000) return (ms / 60_000).toFixed(1) + ' min';
+    if (ms >= 1_000) return (ms / 1_000).toFixed(1).replace(/\.0$/, '') + ' s';
+    if (Number.isInteger(ms)) return ms + ' ms';
+    return ms.toFixed(1) + ' ms';
+  };
+
   useEffect(() => {
     chartRefs.current.forEach((c) => c.destroy());
     chartRefs.current.clear();
@@ -135,9 +142,9 @@ export default function Dashboard() {
           <div className="stat-item"><span className="stat-label">Total tokens</span><span className="stat-value">{fmt(o.total_tokens)}</span></div>
           <div className="stat-item"><span className="stat-label">Input tokens</span><span className="stat-value">{fmt(o.input_tokens)}</span></div>
           <div className="stat-item"><span className="stat-label">Output tokens</span><span className="stat-value">{fmt(o.output_tokens)}</span></div>
-          <div className="stat-item"><span className="stat-label">Avg duration</span><span className="stat-value">{o.avg_duration_ms != null ? fmt(o.avg_duration_ms) + ' ms' : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg duration</span><span className="stat-value">{o.avg_duration_ms != null ? fmtMs(o.avg_duration_ms) : '-'}</span></div>
           <div className="stat-item"><span className="stat-label">Avg tokens/sec</span><span className="stat-value">{o.avg_tokens_per_second != null ? fmt(o.avg_tokens_per_second) : '-'}</span></div>
-          <div className="stat-item"><span className="stat-label">Avg TTFT</span><span className="stat-value">{o.avg_time_to_first_token_ms != null ? fmt(o.avg_time_to_first_token_ms) + ' ms' : '-'}</span></div>
+          <div className="stat-item"><span className="stat-label">Avg TTFT</span><span className="stat-value">{o.avg_time_to_first_token_ms != null ? fmtMs(o.avg_time_to_first_token_ms) : '-'}</span></div>
           <div className="stat-item"><span className="stat-label">Errors</span><span className="stat-value">{fmt(o.error_count)}</span></div>
         </div>
       </section>
