@@ -5,25 +5,25 @@ import type { DashboardMetrics } from '../api';
 
 declare const Chart: any;
 
+const fmt = (n: number): string => {
+  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return n.toFixed(1);
+};
+
+const fmtMs = (ms: number): string => {
+  if (ms >= 60_000) return (ms / 60_000).toFixed(1).replace(/\.0$/, '') + ' min';
+  if (ms >= 1_000) return (ms / 1_000).toFixed(1).replace(/\.0$/, '') + ' s';
+  if (Number.isInteger(ms)) return ms + ' ms';
+  return ms.toFixed(1) + ' ms';
+};
+
 export default function Dashboard() {
   const [search, setSearch] = useSearchParams();
   const period = search.get('period') || '24h';
   const { data, loading, error } = useApiJson<DashboardMetrics>(`/api/charts?period=${period}`);
   const chartRefs = useRef<Map<string, any>>(new Map());
-
-  const fmt = (n: number): string => {
-    if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
-    if (Number.isInteger(n)) return n.toLocaleString();
-    return n.toFixed(1);
-  };
-
-  const fmtMs = (ms: number): string => {
-    if (ms >= 60_000) return (ms / 60_000).toFixed(1) + ' min';
-    if (ms >= 1_000) return (ms / 1_000).toFixed(1).replace(/\.0$/, '') + ' s';
-    if (Number.isInteger(ms)) return ms + ' ms';
-    return ms.toFixed(1) + ' ms';
-  };
 
   useEffect(() => {
     chartRefs.current.forEach((c) => c.destroy());
@@ -38,6 +38,11 @@ export default function Dashboard() {
     const grid = 'rgba(0,0,0,0.08)';
     const labels = m.hourly.map((h) => h.bucket);
 
+    const is24h = period === '24h';
+    const xTicks = is24h
+      ? { maxRotation: 45, maxTicksLimit: 16 }
+      : { maxRotation: 45 };
+
     const mk = (id: string, type: string, label: string, dsLabel: string, dsData: number[], title: string, opts?: Record<string, unknown>) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -48,7 +53,7 @@ export default function Dashboard() {
           responsive: true,
           plugins: { title: { display: true, text: title, font: { size: 14 } } },
           scales: {
-            x: { grid: { display: false }, ticks: { maxRotation: 45 } },
+            x: { grid: { display: false }, ticks: xTicks },
             y: { grid: { color: grid }, beginAtZero: true },
           },
           ...opts,
@@ -78,7 +83,7 @@ export default function Dashboard() {
           responsive: true,
           plugins: { title: { display: true, text: 'Tokens over time', font: { size: 14 } }, legend: {} },
           scales: {
-            x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 45 } },
+            x: { stacked: true, grid: { display: false }, ticks: xTicks },
             y: { stacked: true, grid: { color: grid }, beginAtZero: true },
           },
         },

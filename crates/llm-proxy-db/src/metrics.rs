@@ -35,8 +35,10 @@ impl DashboardPeriod {
 
     fn bucket_expr(self) -> &'static str {
         match self {
-            Self::Last24Hours => "%Y-%m-%d %H:00",
-            Self::Last7Days | Self::Last30Days => "%Y-%m-%d",
+            Self::Last24Hours => {
+                "strftime('%Y-%m-%d %H:', started_at) || printf('%02d', (CAST(strftime('%M', started_at) AS INTEGER) / 15) * 15)"
+            }
+            Self::Last7Days | Self::Last30Days => "strftime('%Y-%m-%d', started_at)",
         }
     }
 }
@@ -145,7 +147,7 @@ impl Database {
         let sql = format!(
             r#"
             SELECT
-                strftime('{bucket_expr}', started_at) AS bucket,
+                {bucket} AS bucket,
                 COUNT(*) AS request_count,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
@@ -160,7 +162,7 @@ impl Database {
             GROUP BY bucket
             ORDER BY bucket
             "#,
-            bucket_expr = period.bucket_expr()
+            bucket = period.bucket_expr()
         );
         let rows = sqlx::query_as::<_, HourlyMetricRow>(&sql)
             .bind(period.sqlite_range())
