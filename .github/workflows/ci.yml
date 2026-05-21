@@ -33,3 +33,7 @@ jobs:
         with:
           node-version: 20
       - run: cargo build --workspace
+      - uses: actions/upload-artifact@v7
+        with:
+          name: llm-proxy
+          path: target/debug/llm-proxy
