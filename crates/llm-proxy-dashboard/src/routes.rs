@@ -465,10 +465,5 @@ pub(crate) async fn download_payload(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    response.headers_mut().insert(
-        header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename=\"{id}_{kind}.json\""))
-            .expect("content disposition should be header-safe"),
-    );
     response
 }

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useApiJson } from '../api';
 import type { RequestDetail } from '../api';
+import PayloadViewer from '../PayloadViewer';
 
 export default function RequestDetail() {
   const { id } = useParams<{ id: string }>();
@@ -10,9 +11,6 @@ export default function RequestDetail() {
   if (error) return <p className="error">Error: {error}</p>;
   if (!data) return null;
   const r = data;
-
-  const PayloadLink = ({ path, label, bytes }: { path: string | null | undefined; label: string; bytes: number | null | undefined }) =>
-    path ? <a href={`/requests/${r.id}/payload/${label === 'request payload' ? 'request' : 'response'}`}>{label}{bytes != null ? ` (${bytes} bytes)` : ''}</a> : <span>{label} unavailable</span>;
 
   return (
     <>
@@ -44,11 +42,12 @@ export default function RequestDetail() {
         </dl>
       </section>
       <section>
-        <h2>Payloads</h2>
-        <ul>
-          <li><PayloadLink path={r.request_payload_path} label="request payload" bytes={r.request_payload_bytes} /></li>
-          <li><PayloadLink path={r.response_payload_path} label="response payload" bytes={r.response_payload_bytes} /></li>
-        </ul>
+        <h2>Request payload</h2>
+        <PayloadViewer kind="request" requestId={r.id} />
+      </section>
+      <section>
+        <h2>Response payload</h2>
+        <PayloadViewer kind="response" requestId={r.id} />
       </section>
       {r.payload_capture_error && <section><p className="error">Capture error: {r.payload_capture_error}</p></section>}
       {r.provider_usage_json && <section><h2>Provider usage</h2><pre>{r.provider_usage_json}</pre></section>}
