@@ -15,14 +15,12 @@ pub(crate) async fn fetch_upstream_models(state: &ProxyState, url: Url) -> Resul
     let url_str = url.as_str().to_owned();
     let response = state.client.get(url.clone()).send().await.map_err(|e| {
         error!(error = %e, url = %url_str, "failed to fetch upstream models");
-        ()
     })?;
     if !response.status().is_success() {
         return Err(());
     }
     let body = response.json::<Value>().await.map_err(|e| {
         error!(error = %e, url = %url_str, "failed to parse upstream models response");
-        ()
     })?;
     Ok(body
         .get("data")

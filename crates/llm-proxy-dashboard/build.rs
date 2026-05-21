@@ -69,7 +69,7 @@ fn main() {
 }
 
 fn check_cmd(cmd: &str) -> bool {
-    Command::new(cmd).arg("--version").status().map_or(false, |s| s.success())
+    Command::new(cmd).arg("--version").status().is_ok_and(|s| s.success())
 }
 
 fn walkdir_rerun(dir: &str) {
