@@ -1,5 +1,5 @@
-use serde::Serialize;
 use crate::{Database, DbError};
+use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum DashboardPeriod {

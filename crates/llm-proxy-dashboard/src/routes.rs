@@ -109,7 +109,10 @@ pub(crate) async fn setup(
     }
 
     if state.setup_token.as_deref() != Some(form.token.as_str()) {
-        return (StatusCode::UNAUTHORIZED, json_response("\"Invalid setup token\"".into()))
+        return (
+            StatusCode::UNAUTHORIZED,
+            json_response("\"Invalid setup token\"".into()),
+        )
             .into_response();
     }
 
@@ -270,19 +273,12 @@ pub(crate) async fn api_request_detail(
 
     match state.database.request_detail(&id).await {
         Ok(Some(detail)) => json_response(serde_json::to_string(&detail).unwrap_or_default()),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            json_response("\"Not found\"".into()),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, json_response("\"Not found\"".into())).into_response(),
         Err(_) => internal_error(),
     }
 }
 
-pub(crate) async fn api_keys(
-    State(state): State<DashboardState>,
-    headers: HeaderMap,
-) -> Response {
+pub(crate) async fn api_keys(State(state): State<DashboardState>, headers: HeaderMap) -> Response {
     let authenticated = require_admin(&state, &headers).await;
     match authenticated {
         Ok(AuthState::Authenticated) => {}
@@ -312,7 +308,10 @@ pub(crate) async fn api_create_key(
 
     let label = form.label.trim();
     if label.is_empty() {
-        return (StatusCode::BAD_REQUEST, json_response("\"Label is required\"".into()))
+        return (
+            StatusCode::BAD_REQUEST,
+            json_response("\"Label is required\"".into()),
+        )
             .into_response();
     }
 
@@ -363,7 +362,10 @@ pub(crate) async fn api_upsert_secret(
 
     let name = form.name.trim();
     if name.is_empty() || form.value.is_empty() {
-        return (StatusCode::BAD_REQUEST, json_response("\"Name and value are required\"".into()))
+        return (
+            StatusCode::BAD_REQUEST,
+            json_response("\"Name and value are required\"".into()),
+        )
             .into_response();
     }
 
@@ -421,7 +423,9 @@ pub(crate) async fn download_payload(
 
     let detail = match state.database.request_detail(&id).await {
         Ok(Some(detail)) => detail,
-        Ok(None) => return (StatusCode::NOT_FOUND, Html::<&str>("<p>Not found</p>")).into_response(),
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, Html::<&str>("<p>Not found</p>")).into_response()
+        }
         Err(_) => return internal_error(),
     };
 
@@ -432,7 +436,11 @@ pub(crate) async fn download_payload(
     };
 
     let Some(path) = path else {
-        return (StatusCode::NOT_FOUND, Html::<&str>("<p>Payload not found</p>")).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Html::<&str>("<p>Payload not found</p>"),
+        )
+            .into_response();
     };
 
     let relative_path = path;

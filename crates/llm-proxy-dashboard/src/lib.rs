@@ -26,14 +26,23 @@ pub fn router(state: DashboardState) -> Router {
         .route("/keys", get(routes::spa))
         .route("/secrets", get(routes::spa))
         // Payload download (file, not SPA)
-        .route("/requests/{id}/payload/{kind}", get(routes::download_payload))
+        .route(
+            "/requests/{id}/payload/{kind}",
+            get(routes::download_payload),
+        )
         // API endpoints
         .route("/api/auth/status", get(routes::api_auth_status))
         .route("/api/charts", get(routes::api_charts))
         .route("/api/requests", get(routes::api_requests))
         .route("/api/requests/{id}", get(routes::api_request_detail))
-        .route("/api/keys", get(routes::api_keys).post(routes::api_create_key))
-        .route("/api/secrets", get(routes::api_secrets).post(routes::api_upsert_secret))
+        .route(
+            "/api/keys",
+            get(routes::api_keys).post(routes::api_create_key),
+        )
+        .route(
+            "/api/secrets",
+            get(routes::api_secrets).post(routes::api_upsert_secret),
+        )
         .route("/api/secrets/delete", post(routes::api_delete_secret))
         // Static files
         // Embedded Vite frontend assets
