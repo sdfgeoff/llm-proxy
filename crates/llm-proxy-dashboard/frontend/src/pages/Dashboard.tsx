@@ -12,6 +12,15 @@ const fmt = (n: number): string => {
   return n.toFixed(1);
 };
 
+/** Parse a UTC bucket string and format it in the browser's local time. */
+const toLocal = (bucket: string): string => {
+  const d = new Date(bucket + (bucket.includes(':') ? '00Z' : 'T00:00Z'));
+  if (bucket.includes(':')) {
+    return d.toLocaleString();
+  }
+  return d.toLocaleDateString();
+};
+
 const fmtMs = (ms: number): string => {
   if (ms >= 60_000) return (ms / 60_000).toFixed(1).replace(/\.0$/, '') + ' min';
   if (ms >= 1_000) return (ms / 1_000).toFixed(1).replace(/\.0$/, '') + ' s';
@@ -36,7 +45,7 @@ export default function Dashboard() {
     const blue = '#2563eb';
     const teal = '#0f766e';
     const grid = 'rgba(0,0,0,0.08)';
-    const labels = m.hourly.map((h) => h.bucket);
+    const labels = m.hourly.map((h) => toLocal(h.bucket));
 
     const is24h = period === '24h';
     const xTicks = is24h
