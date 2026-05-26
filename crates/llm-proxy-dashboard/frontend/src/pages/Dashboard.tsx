@@ -12,10 +12,10 @@ const fmt = (n: number): string => {
   return n.toFixed(1);
 };
 
-/** Parse a UTC bucket string and format it in the browser's local time. */
-const toLocal = (bucket: string): string => {
-  const d = new Date(bucket + (bucket.includes(':') ? '00Z' : 'T00:00Z'));
-  if (bucket.includes(':')) {
+/** Format an ISO 8601 timestamp in the browser's local time. */
+const toLocal = (iso: string): string => {
+  const d = new Date(iso);
+  if (iso.includes('T')) {
     return d.toLocaleString();
   }
   return d.toLocaleDateString();

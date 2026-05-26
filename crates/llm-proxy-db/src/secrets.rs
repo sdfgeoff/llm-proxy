@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{Database, DbError};
+use crate::{to_iso8601, Database, DbError};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct UpstreamSecretInfo {
@@ -100,8 +100,8 @@ fn upstream_secret_from_row(row: (String, Vec<u8>, Vec<u8>, String, String)) -> 
         name: row.0,
         encrypted_value: row.1,
         nonce: row.2,
-        created_at: row.3,
-        updated_at: row.4,
+        created_at: to_iso8601(&row.3),
+        updated_at: to_iso8601(&row.4),
     }
 }
 

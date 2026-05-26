@@ -1,4 +1,4 @@
-use crate::{RequestDetail, RequestSummary};
+use crate::{to_iso8601, RequestDetail, RequestSummary};
 
 #[derive(sqlx::FromRow)]
 pub(crate) struct RequestSummaryRow {
@@ -20,7 +20,7 @@ impl From<RequestSummaryRow> for RequestSummary {
     fn from(row: RequestSummaryRow) -> Self {
         Self {
             id: row.id,
-            started_at: row.started_at,
+            started_at: to_iso8601(&row.started_at),
             proxy_key_label: row.label,
             endpoint: row.endpoint,
             requested_model: row.requested_model,
@@ -73,7 +73,7 @@ impl From<RequestDetailRow> for RequestDetail {
     fn from(row: RequestDetailRow) -> Self {
         Self {
             id: row.id,
-            started_at: row.started_at,
+            started_at: to_iso8601(&row.started_at),
             proxy_key_label: row.label,
             endpoint: row.endpoint,
             requested_model: row.requested_model,

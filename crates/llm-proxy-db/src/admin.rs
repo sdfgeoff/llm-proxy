@@ -2,7 +2,7 @@ use serde::Serialize;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::{Database, DbError};
+use crate::{to_iso8601, Database, DbError};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ProxyApiKey {
@@ -169,7 +169,7 @@ fn proxy_api_key_from_row(row: (String, String, String)) -> ProxyApiKey {
     ProxyApiKey {
         id: row.0,
         label: row.1,
-        created_at: row.2,
+        created_at: to_iso8601(&row.2),
     }
 }
 

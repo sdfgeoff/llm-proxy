@@ -1,4 +1,4 @@
-use crate::{Database, DbError};
+use crate::{to_iso8601, Database, DbError};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -272,7 +272,7 @@ struct HourlyMetricRow {
 impl From<HourlyMetricRow> for HourlyMetric {
     fn from(row: HourlyMetricRow) -> Self {
         Self {
-            bucket: row.bucket,
+            bucket: to_iso8601(&row.bucket),
             request_count: row.request_count,
             input_tokens: row.input_tokens,
             output_tokens: row.output_tokens,

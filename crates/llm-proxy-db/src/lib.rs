@@ -11,6 +11,15 @@ mod secrets;
 
 use std::path::Path;
 
+/// Convert a SQLite timestamp string (e.g. `"2024-01-15 14:30:00"`) to ISO 8601 (`"2024-01-15T14:30:00Z"`).
+pub(crate) fn to_iso8601(s: &str) -> String {
+    match s.len() {
+        10 => format!("{s}T00:00:00Z"),
+        16 => format!("{}:00Z", s.replace(' ', "T")),
+        _ => format!("{}Z", s.replace(' ', "T")),
+    }
+}
+
 pub use admin::ProxyApiKey;
 pub use metrics::{
     DashboardMetrics, DashboardPeriod, DimensionMetric, HourlyMetric, MetricsOverview, StatusMetric,
