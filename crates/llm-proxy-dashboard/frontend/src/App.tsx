@@ -7,6 +7,7 @@ import Requests from './pages/Requests';
 import RequestDetail from './pages/RequestDetail';
 import Keys from './pages/Keys';
 import Secrets from './pages/Secrets';
+import Performance from './pages/Performance';
 import useAuthStatus from './useAuthStatus';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="requests/:id" element={<RequestDetail />} />
         <Route path="keys" element={<Keys />} />
         <Route path="secrets" element={<Secrets />} />
+        <Route path="performance" element={<Performance />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

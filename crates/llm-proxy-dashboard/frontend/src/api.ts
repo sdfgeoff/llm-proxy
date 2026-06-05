@@ -132,3 +132,81 @@ export interface SecretInfo {
   name: string;
   updated_at: string;
 }
+
+// ── Performance monitoring types ─────────────────────────
+
+export interface PerfCpuInfo {
+  usage_percent: number;
+  per_core_usage: number[];
+  per_core: PerfCpuCore[];
+}
+
+export interface PerfCpuCore {
+  usage_percent: number;
+}
+
+export interface PerfRamInfo {
+  total_mb: number;
+  free_mb: number;
+  available_mb: number;
+  used_mb: number;
+  buffers_mb: number;
+  cached_mb: number;
+  usage_percent: number;
+}
+
+export interface PerfGpuInfo {
+  name: string;
+  index: number;
+  utilization_percent: number;
+  vram_total_mb: number;
+  vram_used_mb: number;
+  vram_free_mb: number;
+  temperature_c: number;
+  power_watts: number;
+}
+
+export interface PerfDiskInfo {
+  mount: string;
+  device: string;
+  total_mb: number;
+  used_mb: number;
+  available_mb: number;
+  usage_percent: number;
+  bytes_read: number;
+  bytes_written: number;
+  reads: number;
+  writes: number;
+}
+
+export interface PerfNetworkInfo {
+  interface: string;
+  bytes_received: number;
+  bytes_transmitted: number;
+  packets_received: number;
+  packets_transmitted: number;
+  receive_errors: number;
+  transmit_errors: number;
+}
+
+export interface PerfLoadAverage {
+  load1: number;
+  load5: number;
+  load15: number;
+}
+
+export interface PerfCpuTemp {
+  name: string;
+  temperature_c: number;
+}
+
+export interface PerformanceSnapshot {
+  timestamp: string;
+  cpu: PerfCpuInfo;
+  ram: PerfRamInfo;
+  gpus: PerfGpuInfo[];
+  disks: PerfDiskInfo[];
+  networks: PerfNetworkInfo[];
+  load_average: PerfLoadAverage;
+  cpu_temps: PerfCpuTemp[];
+}

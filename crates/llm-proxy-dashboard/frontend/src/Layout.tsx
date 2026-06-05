@@ -18,6 +18,7 @@ export default function Layout() {
           <Link to="/requests">Requests</Link>
           <Link to="/keys">API Keys</Link>
           <Link to="/secrets">Secrets</Link>
+          <Link to="/performance">Performance</Link>
           <button onClick={handleLogout}>Log out</button>
         </nav>
       </header>
