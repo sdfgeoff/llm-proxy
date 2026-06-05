@@ -241,7 +241,7 @@ export default function Performance() {
           <div><canvas id="chart-cpu" /></div>
           <div><canvas id="chart-ram" /></div>
           <div><canvas id="chart-load" /></div>
-          <div><canvas id="chart-gpu" /></div>
+          {chartData.current.some((s) => s.gpus && s.gpus.length > 0) && <div><canvas id="chart-gpu" /></div>}
           <div><canvas id="chart-network" /></div>
         </div>
       </section>

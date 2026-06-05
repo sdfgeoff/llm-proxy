@@ -1,5 +1,5 @@
 mod collector;
-pub mod db;
+mod db;
 pub mod types;
 
 use std::time::Duration;
@@ -10,6 +10,15 @@ use tracing::{info, warn};
 
 use crate::collector::{collect, PreviousSnapshot};
 use crate::types::Snapshot;
+
+/// Query snapshots in a time range.
+pub async fn query_snapshots(
+    db: &Database,
+    start: &str,
+    end: &str,
+) -> Result<Vec<Snapshot>, llm_proxy_db::DbError> {
+    db::query_snapshots(db, start, end).await
+}
 
 /// Handle to send snapshots to WebSocket clients.
 /// Clone this and pass it to the dashboard's WebSocket handler.
@@ -54,6 +63,20 @@ impl Default for MonitorConfig {
 pub fn spawn_monitor_task(db: Database, config: MonitorConfig) -> MonitorHandle {
     let (tx, _rx) = broadcast::channel::<Snapshot>(64);
     let handle = MonitorHandle::new(tx);
+
+    // Initial cleanup of any stale data before starting collection
+    let cleanup_db = db.clone();
+    let cleanup_retention = config.retention;
+    tokio::spawn(async move {
+        let cutoff = time::OffsetDateTime::now_utc() - time::Duration::hours(cleanup_retention.as_secs() as i64 / 3600);
+        let cutoff_str = cutoff.format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|_| cutoff.to_string());
+        if let Ok(count) = db::cleanup_old_snapshots(&cleanup_db, &cutoff_str).await {
+            if count > 0 {
+                info!(removed = count, "cleaned up stale system metrics on startup");
+            }
+        }
+    });
 
     tokio::spawn(monitor_loop(db, config, handle.clone()));
 

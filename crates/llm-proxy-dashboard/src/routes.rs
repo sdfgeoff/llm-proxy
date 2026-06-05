@@ -496,7 +496,7 @@ pub(crate) async fn api_performance_history(
     let start_str = start.format(fmt).unwrap_or_else(|_| start.to_string());
     let end_str = now.format(fmt).unwrap_or_else(|_| now.to_string());
 
-    match llm_proxy_monitor::db::query_snapshots(&state.database, &start_str, &end_str).await {
+    match llm_proxy_monitor::query_snapshots(&state.database, &start_str, &end_str).await {
         Ok(snapshots) => json_response(serde_json::to_string(&snapshots).unwrap_or_default()),
         Err(_) => internal_error(),
     }
@@ -520,7 +520,7 @@ pub(crate) async fn api_performance_latest(
     let start_str = start.format(fmt).unwrap_or_else(|_| start.to_string());
     let end_str = now.format(fmt).unwrap_or_else(|_| now.to_string());
 
-    match llm_proxy_monitor::db::query_snapshots(&state.database, &start_str, &end_str).await {
+    match llm_proxy_monitor::query_snapshots(&state.database, &start_str, &end_str).await {
         Ok(snapshots) => {
             let latest = snapshots.last();
             match latest {
