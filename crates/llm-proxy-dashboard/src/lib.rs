@@ -25,6 +25,7 @@ pub fn router(state: DashboardState) -> Router {
         .route("/requests/{id}", get(routes::spa))
         .route("/keys", get(routes::spa))
         .route("/secrets", get(routes::spa))
+        .route("/performance", get(routes::spa))
         // Payload download (file, not SPA)
         .route(
             "/requests/{id}/payload/{kind}",
@@ -44,6 +45,11 @@ pub fn router(state: DashboardState) -> Router {
             get(routes::api_secrets).post(routes::api_upsert_secret),
         )
         .route("/api/secrets/delete", post(routes::api_delete_secret))
+        // Performance API
+        .route("/api/performance/history", get(routes::api_performance_history))
+        .route("/api/performance/latest", get(routes::api_performance_latest))
+        // WebSocket
+        .route("/ws/performance", get(routes::ws_performance))
         // Static files
         // Embedded Vite frontend assets
         .route("/static/style.css", get(routes::serve_css))
@@ -64,6 +70,7 @@ mod tests {
 
     use llm_proxy_core::{Config, MasterKey};
     use llm_proxy_db::Database;
+    use llm_proxy_monitor::spawn_monitor_task;
 
     use super::*;
 
@@ -79,7 +86,8 @@ mod tests {
             ..Config::default()
         };
 
-        let state = DashboardState::new(Arc::new(config), database, master_key, None);
+        let monitor = spawn_monitor_task(database.clone(), llm_proxy_monitor::MonitorConfig::default());
+        let state = DashboardState::new(Arc::new(config), database, master_key, None, monitor);
 
         let _ = router(state);
     }

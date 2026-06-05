@@ -67,12 +67,14 @@ impl Database {
         sqlx::query("PRAGMA foreign_keys = ON")
             .execute(&self.pool)
             .await?;
-        for statement in migrations::MIGRATION_0001
-            .split(';')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            sqlx::query(statement).execute(&self.pool).await?;
+        for (_version, statement_block) in migrations::ALL_MIGRATIONS {
+            for statement in statement_block
+                .split(';')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                sqlx::query(statement).execute(&self.pool).await?;
+            }
         }
         Ok(())
     }
@@ -93,6 +95,6 @@ mod tests {
             .await
             .expect("count migrations");
 
-        assert_eq!(row.0, 1);
+        assert_eq!(row.0, 2);
     }
 }

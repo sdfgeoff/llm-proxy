@@ -4,6 +4,7 @@ members = [
     "crates/llm-proxy-core",
     "crates/llm-proxy-dashboard",
     "crates/llm-proxy-db",
+    "crates/llm-proxy-monitor",
     "crates/llm-proxy-proxy",
 ]
 resolver = "2"
@@ -17,7 +18,7 @@ rust-version = "1.82"
 [workspace.dependencies]
 anyhow = "1"
 argon2 = "0.5"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
 bytes = "1"
 chacha20poly1305 = "0.10"

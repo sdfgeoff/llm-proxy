@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::{Form, Path, Query, State},
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, Form, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{Html, IntoResponse, Redirect, Response},
 };
@@ -474,4 +474,131 @@ pub(crate) async fn download_payload(
         HeaderValue::from_static("application/json"),
     );
     response
+}
+
+/* ── performance API ──────────────────────────────────── */
+
+pub(crate) async fn api_performance_history(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    let now = time::OffsetDateTime::now_utc();
+    let start = now - time::Duration::hours(1);
+    let fmt = &time::format_description::well_known::Rfc3339;
+    let start_str = start.format(fmt).unwrap_or_else(|_| start.to_string());
+    let end_str = now.format(fmt).unwrap_or_else(|_| now.to_string());
+
+    match llm_proxy_monitor::db::query_snapshots(&state.database, &start_str, &end_str).await {
+        Ok(snapshots) => json_response(serde_json::to_string(&snapshots).unwrap_or_default()),
+        Err(_) => internal_error(),
+    }
+}
+
+pub(crate) async fn api_performance_latest(
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    let now = time::OffsetDateTime::now_utc();
+    let start = now - time::Duration::seconds(60);
+    let fmt = &time::format_description::well_known::Rfc3339;
+    let start_str = start.format(fmt).unwrap_or_else(|_| start.to_string());
+    let end_str = now.format(fmt).unwrap_or_else(|_| now.to_string());
+
+    match llm_proxy_monitor::db::query_snapshots(&state.database, &start_str, &end_str).await {
+        Ok(snapshots) => {
+            let latest = snapshots.last();
+            match latest {
+                Some(s) => json_response(serde_json::to_string(s).unwrap_or_default()),
+                None => json_response("null".to_string()),
+            }
+        }
+        Err(_) => internal_error(),
+    }
+}
+
+/* ── performance WebSocket ────────────────────────────── */
+
+pub(crate) async fn ws_performance(
+    ws: WebSocketUpgrade,
+    State(state): State<DashboardState>,
+    headers: HeaderMap,
+) -> Response {
+    let authenticated = require_admin(&state, &headers).await;
+    match authenticated {
+        Ok(AuthState::Authenticated) => {}
+        Ok(AuthState::NeedsSetup) => return Redirect::to("/setup").into_response(),
+        Ok(AuthState::Unauthenticated) => return Redirect::to("/login").into_response(),
+        Err(response) => return response,
+    }
+
+    ws.on_upgrade(|socket| handle_performance_ws(socket, state.monitor))
+        .into_response()
+}
+
+async fn handle_performance_ws(mut socket: WebSocket, monitor: llm_proxy_monitor::MonitorHandle) {
+    let mut rx = monitor.subscribe();
+
+    loop {
+        tokio::select! {
+            result = rx.recv() => {
+                match result {
+                    Ok(snapshot) => {
+                        let json = match serde_json::to_string(&snapshot) {
+                            Ok(j) => j,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "failed to serialize snapshot for WebSocket");
+                                continue;
+                            }
+                        };
+                        if let Err(e) = socket.send(Message::Text(json.into())).await {
+                            tracing::debug!(error = %e, "WebSocket send failed, client disconnected");
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::debug!(skipped = n, "WebSocket client lagged, catching up");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        tracing::debug!("monitor channel closed");
+                        break;
+                    }
+                }
+            }
+            result = socket.recv() => {
+                match result {
+                    Some(Ok(Message::Close(_frame))) => {
+                        tracing::debug!("WebSocket client closed connection");
+                        break;
+                    }
+                    Some(Ok(_)) => {
+                        // Ignore other messages from client
+                    }
+                    Some(Err(e)) => {
+                        tracing::debug!(error = %e, "WebSocket receive error");
+                        break;
+                    }
+                    None => {
+                        tracing::debug!("WebSocket stream ended");
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }

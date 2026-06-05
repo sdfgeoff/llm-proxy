@@ -1,26 +1,16 @@
 [package]
-name = "llm-proxy-dashboard"
+name = "llm-proxy-monitor"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-build = "build.rs"
 
 [dependencies]
-axum.workspace = true
-llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-db = { path = "../llm-proxy-db" }
-llm-proxy-monitor = { path = "../llm-proxy-monitor" }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
+sqlx.workspace = true
 time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-zstd.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
-
-[build-dependencies]

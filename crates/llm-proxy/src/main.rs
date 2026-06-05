@@ -105,8 +105,9 @@ async fn run(config_path: Option<PathBuf>) -> Result<()> {
 
     let config = Arc::new(config);
     let proxy_state = ProxyState::new(Arc::clone(&config), database.clone(), master_key.clone());
+    let monitor = llm_proxy_monitor::spawn_monitor_task(database.clone(), llm_proxy_monitor::MonitorConfig::default());
     let dashboard_state =
-        DashboardState::new(Arc::clone(&config), database, master_key, setup_token);
+        DashboardState::new(Arc::clone(&config), database, master_key, setup_token, monitor);
 
     let proxy_addr = config.proxy_listen;
     let admin_addr = config.admin_listen;

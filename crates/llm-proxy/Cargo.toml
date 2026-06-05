@@ -12,6 +12,7 @@ clap.workspace = true
 llm-proxy-core = { path = "../llm-proxy-core" }
 llm-proxy-dashboard = { path = "../llm-proxy-dashboard" }
 llm-proxy-db = { path = "../llm-proxy-db" }
+llm-proxy-monitor = { path = "../llm-proxy-monitor" }
 llm-proxy-proxy = { path = "../llm-proxy-proxy" }
 tokio.workspace = true
 tracing.workspace = true

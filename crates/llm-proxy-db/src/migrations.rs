@@ -78,3 +78,32 @@ CREATE INDEX IF NOT EXISTS idx_request_log_proxy_key_id ON request_log(proxy_key
 CREATE INDEX IF NOT EXISTS idx_request_log_requested_model ON request_log(requested_model);
 CREATE INDEX IF NOT EXISTS idx_request_log_route_name ON request_log(route_name);
 "#;
+
+pub(crate) const MIGRATION_0002: &str = r#"
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (2);
+
+CREATE TABLE IF NOT EXISTS system_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    cpu_usage_percent REAL NOT NULL DEFAULT 0,
+    cpu_cores INTEGER NOT NULL DEFAULT 0,
+    ram_total_mb INTEGER NOT NULL DEFAULT 0,
+    ram_used_mb INTEGER NOT NULL DEFAULT 0,
+    ram_available_mb INTEGER NOT NULL DEFAULT 0,
+    ram_usage_percent REAL NOT NULL DEFAULT 0,
+    load_avg_1 REAL NOT NULL DEFAULT 0,
+    load_avg_5 REAL NOT NULL DEFAULT 0,
+    load_avg_15 REAL NOT NULL DEFAULT 0,
+    gpu_json TEXT,
+    disk_json TEXT,
+    network_json TEXT,
+    cpu_temps_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_metrics_timestamp ON system_metrics(timestamp);
+"#;
+
+pub(crate) const ALL_MIGRATIONS: &[(&str, &str)] = &[
+    ("1", MIGRATION_0001),
+    ("2", MIGRATION_0002),
+];
