@@ -124,8 +124,8 @@ impl Database {
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 AVG(duration_ms) AS avg_duration_ms,
                 AVG(CASE
-                    WHEN duration_ms > 0 AND output_tokens IS NOT NULL
-                    THEN output_tokens * 1000.0 / duration_ms
+                    WHEN generation_ms > 0 AND output_tokens IS NOT NULL
+                    THEN output_tokens * 1000.0 / generation_ms
                 END) AS avg_tokens_per_second,
                 AVG(time_to_first_token_ms) AS avg_time_to_first_token_ms,
                 COALESCE(SUM(CASE
@@ -153,8 +153,8 @@ impl Database {
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 AVG(CASE
-                    WHEN duration_ms > 0 AND output_tokens IS NOT NULL
-                    THEN output_tokens * 1000.0 / duration_ms
+                    WHEN generation_ms > 0 AND output_tokens IS NOT NULL
+                    THEN output_tokens * 1000.0 / generation_ms
                 END) AS avg_tokens_per_second,
                 AVG(time_to_first_token_ms) AS avg_time_to_first_token_ms
             FROM request_log
@@ -184,8 +184,8 @@ impl Database {
                 COUNT(*) AS request_count,
                 COALESCE(SUM(request_log.total_tokens), 0) AS total_tokens,
                 AVG(CASE
-                    WHEN request_log.duration_ms > 0 AND request_log.output_tokens IS NOT NULL
-                    THEN request_log.output_tokens * 1000.0 / request_log.duration_ms
+                    WHEN request_log.generation_ms > 0 AND request_log.output_tokens IS NOT NULL
+                    THEN request_log.output_tokens * 1000.0 / request_log.generation_ms
                 END) AS avg_tokens_per_second,
                 AVG(request_log.time_to_first_token_ms) AS avg_time_to_first_token_ms
             FROM request_log

@@ -37,13 +37,57 @@ async fn dashboard_metrics_group_requests_by_time_model_key_and_status() {
     assert_eq!(metrics.overview.total_tokens, 120);
     assert_eq!(metrics.overview.error_count, 1);
     assert_eq!(metrics.overview.avg_time_to_first_token_ms, Some(120.0));
+    assert_eq!(metrics.overview.avg_tokens_per_second, Some(20.0));
     assert_eq!(metrics.hourly.len(), 1);
     assert_eq!(metrics.hourly[0].total_tokens, 120);
+    assert_eq!(metrics.hourly[0].avg_tokens_per_second, Some(20.0));
     assert_eq!(metrics.by_model[0].label, "gpt-5.5");
     assert_eq!(metrics.by_model[0].request_count, 2);
+    assert_eq!(metrics.by_model[0].avg_tokens_per_second, Some(20.0));
     assert_eq!(metrics.by_key.len(), 2);
     assert!(metrics.by_status.iter().any(|row| row.label == "2xx"));
     assert!(metrics.by_status.iter().any(|row| row.label == "5xx"));
+}
+
+#[tokio::test]
+async fn dashboard_tokens_per_second_uses_generation_duration_only() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = Database::connect(&dir.path().join("tokens-per-second.sqlite"))
+        .await
+        .expect("connect database");
+    let key = db
+        .create_proxy_api_key("local", "local-hash")
+        .await
+        .expect("create key");
+
+    let non_streaming = insert_metric_request(&db, &key.id, "gpt-5.5", 200, 10, 10, 100)
+        .await
+        .expect("non-streaming request");
+    let streaming = insert_metric_request(&db, &key.id, "gpt-5.5", 200, 2000, 10, 40)
+        .await
+        .expect("streaming request");
+
+    sqlx::query("UPDATE request_log SET stream = 1, generation_ms = 1000 WHERE id = ?")
+        .bind(streaming)
+        .execute(db.pool())
+        .await
+        .expect("set generation duration");
+    sqlx::query("UPDATE request_log SET generation_ms = NULL WHERE id = ?")
+        .bind(non_streaming)
+        .execute(db.pool())
+        .await
+        .expect("clear generation duration");
+
+    let metrics = db
+        .dashboard_metrics(DashboardPeriod::Last24Hours)
+        .await
+        .expect("metrics");
+
+    assert_eq!(metrics.overview.request_count, 2);
+    assert_eq!(metrics.overview.output_tokens, 140);
+    assert_eq!(metrics.overview.avg_tokens_per_second, Some(40.0));
+    assert_eq!(metrics.hourly[0].avg_tokens_per_second, Some(40.0));
+    assert_eq!(metrics.by_model[0].avg_tokens_per_second, Some(40.0));
 }
 
 #[tokio::test]
@@ -130,6 +174,7 @@ async fn insert_metric_request(
         RequestLogUpdate {
             http_status: Some(status),
             duration_ms: Some(duration_ms),
+            generation_ms: Some(output_tokens * 50),
             input_tokens: Some(input_tokens),
             output_tokens: Some(output_tokens),
             total_tokens: Some(input_tokens + output_tokens),

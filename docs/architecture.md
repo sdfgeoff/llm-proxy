@@ -38,10 +38,13 @@ Configuration is JSON and is treated as deployment/configuration data. It is not
 Config discovery order:
 
 1. Explicit `--config /path/to/config.json`
-2. `config.json` beside the executable, creating it there if possible
-3. `~/.config/llm-proxy/config.json`
+2. Existing `config.json` beside the executable
+3. Existing `~/.config/llm-proxy/config.json`
+4. Create `config.json` beside the executable if possible
+5. Otherwise create `~/.config/llm-proxy/config.json`
 
 If no config exists, first startup creates a usable default config non-interactively, creates missing data directories, initializes the database, and starts the service.
+Relative filesystem paths inside the config are resolved from the directory containing the selected config file.
 
 Example config:
 
